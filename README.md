@@ -1,8 +1,8 @@
 # AI powered Jobs Application Engine
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=OBGCNZgf6k0">
-    <img src="https://img.youtube.com/vi/OBGCNZgf6k0/maxresdefault.jpg" alt="automated jobs application" width="640"/>
+  <a href="https://www.youtube.com/watch?v=Xw2Qw_oJgu4">
+    <img src="https://img.youtube.com/vi/Xw2Qw_oJgu4/maxresdefault.jpg" alt="ai powered job application engine" width="640"/>
     <br>
     <strong>Watch the full demo (click to play)</strong>
   </a>
