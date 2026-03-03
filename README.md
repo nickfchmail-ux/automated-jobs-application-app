@@ -11,8 +11,6 @@
 
 A Next.js app that scrapes job listings, scores them against your resume, and generates cover letters.
 
-Developed with Claude Sonnet 4.6 in just 2 days (95% of codes was ai generated)
-
 ## Features
 
 - **Scrape jobs** from JobsDB and CTgoodjobs by keyword
@@ -54,3 +52,7 @@ Developed with Claude Sonnet 4.6 in just 2 days (95% of codes was ai generated)
 |---|---|
 | `SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (bypasses RLS) |
+
+## Note
+
+> 95% of the code in this project was written by AI (GitHub Copilot / Claude).
