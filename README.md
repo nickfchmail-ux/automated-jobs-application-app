@@ -54,4 +54,4 @@ A Next.js app that scrapes job listings, scores them against your resume, and ge
 | `SUPABASE_SERVICE_KEY` | Supabase service role key (bypasses RLS) |
 
 ## Note
-> leveraged AI to speed up boilerplate
+> ~90% AI-written (Claude 4.6) — because the junior dev job market is rough enough without also hand-writing cover letters. 😂
