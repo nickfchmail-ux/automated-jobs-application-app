@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import { getUserId } from "@/lib/auth";
 import { formatDate } from "@/lib/dateUtils";
 import { supabase } from "@/lib/supabase";
+import AppliedToggle from "./AppliedToggle";
 import CoverLetterActions from "./CoverLetterActions";
 
 export const revalidate = 0;
@@ -260,6 +261,10 @@ export default async function JobDetailPage({
 
             <div className="flex items-center gap-3 shrink-0">
               <ScoreBadge score={job.fit_score} />
+              <AppliedToggle
+                jobId={job.id}
+                initialApplied={job.applied ?? false}
+              />
               <Link
                 href={job.url}
                 target="_blank"

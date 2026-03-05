@@ -21,6 +21,7 @@ export default async function Home() {
   const [
     { count: fitCount },
     { count: notFitCount },
+    { count: appliedCount },
     { data: recent },
     resumeInfo,
   ] = await Promise.all([
@@ -36,6 +37,11 @@ export default async function Home() {
       .eq("user_id", userId),
     supabase
       .from("jobs")
+      .select("*", { count: "exact", head: true })
+      .eq("applied", true)
+      .eq("user_id", userId),
+    supabase
+      .from("jobs")
       .select("id, title, company, fit, fit_score, url, posted_date")
       .eq("user_id", userId)
       .order("created_at", { ascending: true })
@@ -44,6 +50,8 @@ export default async function Home() {
   ]);
   const hasResume = resumeInfo.ok && !!resumeInfo.fileName;
   const total = (fitCount ?? 0) + (notFitCount ?? 0);
+  const applied = appliedCount ?? 0;
+  const pending = total - applied;
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -153,6 +161,62 @@ export default async function Home() {
               Doesn't match your current experience level
             </p>
           </Link>
+        </div>
+
+        {/* Applied tracker */}
+        <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
+                <svg
+                  className="w-6 h-6 text-blue-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                Application Tracker
+              </p>
+            </div>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              {total} total
+            </p>
+          </div>
+          <div className="flex gap-6 mb-4">
+            <div>
+              <p className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+                {applied}
+              </p>
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Applied
+              </p>
+            </div>
+            <div className="w-px bg-zinc-100 dark:bg-zinc-800" />
+            <div>
+              <p className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+                {pending}
+              </p>
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Not Yet Applied
+              </p>
+            </div>
+          </div>
+          {total > 0 && (
+            <div className="w-full h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all"
+                style={{ width: `${Math.round((applied / total) * 100)}%` }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Recently added */}

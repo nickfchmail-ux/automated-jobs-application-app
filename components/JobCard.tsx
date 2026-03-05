@@ -27,6 +27,7 @@ export type Job = {
   expected_salary: string | null;
   search_key: string | null;
   created_at: string;
+  applied?: boolean | null;
 };
 
 type JobSource = {

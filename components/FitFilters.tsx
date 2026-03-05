@@ -77,6 +77,7 @@ const SOURCE_COLORS: Record<string, string> = {
 export default function FitFilters({ jobs }: { jobs: Job[] }) {
   const [sourceFilter, setSourceFilter] = useState("All");
   const [keyFilter, setKeyFilter] = useState("All");
+  const [appliedFilter, setAppliedFilter] = useState("All");
 
   const sources = useMemo(
     () => [...new Set(jobs.map((j) => detectSourceName(j.url)))].sort(),
@@ -98,9 +99,13 @@ export default function FitFilters({ jobs }: { jobs: Job[] }) {
       const matchKey =
         keyFilter === "All" ||
         formatKey(job.search_key ?? "Unknown") === keyFilter;
-      return matchSource && matchKey;
+      const matchApplied =
+        appliedFilter === "All" ||
+        (appliedFilter === "Applied" && job.applied === true) ||
+        (appliedFilter === "Not Applied" && !job.applied);
+      return matchSource && matchKey && matchApplied;
     });
-  }, [jobs, sourceFilter, keyFilter]);
+  }, [jobs, sourceFilter, keyFilter, appliedFilter]);
 
   return (
     <div className="space-y-8">
@@ -119,6 +124,17 @@ export default function FitFilters({ jobs }: { jobs: Job[] }) {
           options={searchKeys}
           active={keyFilter}
           onChange={setKeyFilter}
+        />
+        <div className="border-t border-zinc-100 dark:border-zinc-800" />
+        <FilterBar
+          label="Applied"
+          options={["Applied", "Not Applied"]}
+          active={appliedFilter}
+          onChange={setAppliedFilter}
+          colorMap={{
+            Applied: "bg-emerald-600 text-white",
+            "Not Applied": "bg-zinc-600 text-white",
+          }}
         />
       </div>
 
