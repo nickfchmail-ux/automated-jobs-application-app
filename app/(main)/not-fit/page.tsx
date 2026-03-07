@@ -1,6 +1,5 @@
 import FitFilters from "@/components/FitFilters";
 import { Job } from "@/components/JobCard";
-import Navbar from "@/components/Navbar";
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Metadata } from "next";
@@ -16,16 +15,20 @@ export default async function NotFitPage() {
   const userId = await getUserId();
   if (!userId) redirect("/login");
 
-  const { data: jobs, error } = await supabase
+  const { data: jobs = [], error } = await supabase
     .from("jobs")
     .select("*")
     .eq("fit", false)
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
+  const fit = !!jobs?.length ? jobs?.filter((j) => j.fit === true).length : 0;
+  const notFit = !!jobs?.length
+    ? jobs?.filter((j) => j.fit !== true)?.length
+    : 0;
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <Navbar currentPath="/not-fit" />
       <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-6 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950 flex items-center justify-center shrink-0">

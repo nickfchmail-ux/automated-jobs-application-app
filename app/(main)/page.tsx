@@ -1,5 +1,4 @@
 import { getResumeInfo } from "@/app/actions/resume";
-import Navbar from "@/components/Navbar";
 import ScrapePanel from "@/components/ScrapePanel";
 import { getUserId } from "@/lib/auth";
 import { formatDate } from "@/lib/dateUtils";
@@ -55,7 +54,6 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <Navbar currentPath="/" />
       {/* Hero */}
       <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-5xl mx-auto px-4 sm:px-8 py-12">
@@ -187,7 +185,7 @@ export default async function Home() {
               </p>
             </div>
             <p className="text-xs text-zinc-400 dark:text-zinc-500">
-              {total} total
+              {fitCount} total
             </p>
           </div>
           <div className="flex gap-6 mb-4">
@@ -201,10 +199,10 @@ export default async function Home() {
             </div>
             <div className="w-px bg-zinc-100 dark:bg-zinc-800" />
             <div>
-              <p className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
-                {pending}
+              <p className="text-3xl font-bold  dark:text-zinc-50 text-green-400">
+                {fitCount! - applied}
               </p>
-              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5 ">
                 Not Yet Applied
               </p>
             </div>
@@ -213,7 +211,7 @@ export default async function Home() {
             <div className="w-full h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
               <div
                 className="h-full rounded-full bg-blue-500 transition-all"
-                style={{ width: `${Math.round((applied / total) * 100)}%` }}
+                style={{ width: `${Math.round((applied / fitCount!) * 100)}%` }}
               />
             </div>
           )}

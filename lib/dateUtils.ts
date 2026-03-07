@@ -12,11 +12,14 @@ export function formatDate(value: string | null): string | null {
   // Parse as LOCAL date to avoid UTC-midnight timezone off-by-one.
   // new Date("2026-03-03") is UTC midnight which shifts the day in non-UTC zones.
   const [year, month, day] = value.substring(0, 10).split("-").map(Number);
-  const date = new Date(year, month - 1, day); // local midnight
+  const date = new Date(Date.UTC(year, month - 1, day));
   if (isNaN(date.getTime())) return value;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const hkToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+  }).format(new Date());
+  const [ty, tm, td] = hkToday.split("-").map(Number);
+  const today = new Date(Date.UTC(ty, tm - 1, td));
 
   const days = Math.round(
     (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),

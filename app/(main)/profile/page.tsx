@@ -1,5 +1,5 @@
 import { getResumeInfo } from "@/app/actions/resume";
-import Navbar from "@/components/Navbar";
+
 import ResumePanel from "@/components/ResumePanel";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -19,7 +19,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <Navbar currentPath="/profile" />
+
 
       {/* Page header */}
       <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">

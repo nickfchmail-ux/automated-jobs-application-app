@@ -1,6 +1,6 @@
 import FitFilters from "@/components/FitFilters";
 import { Job } from "@/components/JobCard";
-import Navbar from "@/components/Navbar";
+
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Metadata } from "next";
@@ -25,7 +25,7 @@ export default async function FitPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <Navbar currentPath="/fit" />
+
       <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-6 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center shrink-0">

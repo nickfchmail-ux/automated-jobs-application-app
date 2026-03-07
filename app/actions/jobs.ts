@@ -16,7 +16,7 @@ export async function toggleAppliedAction(
 
   const { error } = await supabase
     .from("jobs")
-    .update({ applied })
+    .update({ applied, applied_on: applied ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Hong_Kong" }).format(new Date()) : null })
     .eq("id", jobId)
     .eq("user_id", userId);
 

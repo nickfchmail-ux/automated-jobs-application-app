@@ -1,11 +1,23 @@
+"use client";
 import { logoutAction } from "@/app/actions/auth";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+
+import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
+import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
+import SentimentVeryDissatisfiedIcon from "@mui/icons-material/SentimentVeryDissatisfied";
+import SpaceDashboardIcon from "@mui/icons-material/SpaceDashboard";
+import Badge from "@mui/material/Badge";
+import BackButton from "./BackButton";
+import TransparentButton from "./TransparentButton";
 
 type Props = {
   currentPath?: string;
+  fit?: number;
+  notFit?: number;
 };
 
-export default function Navbar({ currentPath = "/" }: Props) {
+export default function Navbar({ currentPath = "/", fit, notFit }: Props) {
   const links = [
     { href: "/", label: "Dashboard" },
     { href: "/fit", label: "Good Fit" },
@@ -13,45 +25,53 @@ export default function Navbar({ currentPath = "/" }: Props) {
     { href: "/profile", label: "Profile" },
   ];
 
+  const pathName = usePathname();
+  const router = useRouter();
+
   return (
-    <nav className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between gap-4">
+    <nav className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-10 h-[max-content] ">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between gap-4 h-full py-5">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
-            <svg
-              className="w-4 h-4 text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
+          <div className={`mt-2 ml-2  w-min-[max-content]`}>
+            <BackButton />
           </div>
-
         </Link>
 
         {/* Nav links */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap justify-around">
           {links.map((link) => {
-            const isActive = currentPath === link.href;
+            const isActive = pathName === link.href;
+            const shouldShowBadge =
+              link.label === "Good Fit" || link.label === "Not Fit";
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-50"
-                    : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                }`}
-              >
-                {link.label}
-              </Link>
+              <TransparentButton
+                key={link.label}
+                icon={
+                  shouldShowBadge ? (
+                    <Badge
+                      badgeContent={link.label === "Good Fit" ? fit : notFit}
+                      color="primary"
+                    >
+                      {link.label === "Good Fit" && (
+                        <SentimentSatisfiedAltIcon color="primary" />
+                      )}
+
+                      {link.label === "Not Fit" && (
+                        <SentimentVeryDissatisfiedIcon color="error" />
+                      )}
+                    </Badge>
+                  ) : link.label === "Dashboard" ? (
+                    <SpaceDashboardIcon color="secondary" />
+                  ) : (
+                    <AssignmentIndIcon color="info" />
+                  )
+                }
+                isActive={isActive}
+                iconPosition={shouldShowBadge ? "right" : "left"}
+                title={link.label}
+                onClick={() => router.push(link.href)}
+              />
             );
           })}
         </div>
@@ -60,7 +80,7 @@ export default function Navbar({ currentPath = "/" }: Props) {
         <form action={logoutAction}>
           <button
             type="submit"
-            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950"
+            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950 "
           >
             <svg
               className="w-3.5 h-3.5"

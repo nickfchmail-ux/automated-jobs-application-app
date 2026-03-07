@@ -103,7 +103,7 @@ export default function FitFilters({ jobs }: { jobs: Job[] }) {
         appliedFilter === "All" ||
         (appliedFilter === "Applied" && job.applied === true) ||
         (appliedFilter === "Not Applied" && !job.applied);
-      return matchSource && matchKey && matchApplied;
+      return matchApplied && matchSource && matchKey;
     });
   }, [jobs, sourceFilter, keyFilter, appliedFilter]);
 
@@ -111,14 +111,6 @@ export default function FitFilters({ jobs }: { jobs: Job[] }) {
     <div className="space-y-8">
       {/* Filter panel */}
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-5 py-4 shadow-sm space-y-3">
-        <FilterBar
-          label="Source"
-          options={sources}
-          active={sourceFilter}
-          onChange={setSourceFilter}
-          colorMap={SOURCE_COLORS}
-        />
-        <div className="border-t border-zinc-100 dark:border-zinc-800" />
         <FilterBar
           label="Search Key"
           options={searchKeys}
@@ -128,13 +120,22 @@ export default function FitFilters({ jobs }: { jobs: Job[] }) {
         <div className="border-t border-zinc-100 dark:border-zinc-800" />
         <FilterBar
           label="Applied"
-          options={["Applied", "Not Applied"]}
+          options={["Not Applied", "Applied"]}
           active={appliedFilter}
           onChange={setAppliedFilter}
           colorMap={{
             Applied: "bg-emerald-600 text-white",
             "Not Applied": "bg-zinc-600 text-white",
           }}
+        />
+        <div className="border-t border-zinc-100 dark:border-zinc-800" />
+
+        <FilterBar
+          label="Source"
+          options={sources}
+          active={sourceFilter}
+          onChange={setSourceFilter}
+          colorMap={SOURCE_COLORS}
         />
       </div>
 
