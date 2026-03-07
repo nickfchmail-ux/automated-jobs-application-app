@@ -8,7 +8,6 @@ export default async function MainLayout({
   children: React.ReactNode;
 }) {
   const userId = await getUserId();
-  console.log("user id: ", userId);
 
   const jobs = await getJobsMatch();
 

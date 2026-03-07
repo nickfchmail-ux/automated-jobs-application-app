@@ -93,7 +93,39 @@ export async function signupAction(
     };
   }
 
-  redirect("/login?registered=1");
+  // Registration succeeded — now log in to obtain tokens
+  let loginRes: Response;
+  try {
+    loginRes = await fetch(`${BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch {
+    return {
+      error: "Account created but could not log in. Please sign in manually.",
+    };
+  }
+
+  if (!loginRes.ok) {
+    redirect("/login");
+  }
+
+  const data = await loginRes.json();
+  const cookieStore = await cookies();
+  const cookieOpts = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  };
+  cookieStore.set("token", data.access_token, cookieOpts);
+  if (data.refresh_token) {
+    cookieStore.set("refresh_token", data.refresh_token, cookieOpts);
+  }
+
+  redirect("/");
 }
 
 export async function logoutAction() {

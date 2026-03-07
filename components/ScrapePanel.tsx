@@ -16,15 +16,7 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [isStarting, startTransition] = useTransition();
   const [isRefreshing, refreshTransition] = useTransition();
-  const logsContainerRef = useRef<HTMLDivElement>(null);
-  const logsEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Auto-scroll logs
-  useEffect(() => {
-    const el = logsContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [logs]);
 
   // Auto-refresh page when scrape completes
   useEffect(() => {
@@ -365,20 +357,76 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
             )}
           </div>
 
-          {/* Logs */}
+          {/* Progress steps */}
           {logs.length > 0 && (
-            <div
-              ref={logsContainerRef}
-              className="rounded-xl bg-zinc-950 border border-zinc-800 p-4 max-h-48 overflow-y-auto font-mono text-xs text-zinc-300 space-y-1"
-            >
-              {logs.map((log, i) => (
-                <div key={i} className="flex gap-2">
-                  <span className="text-zinc-600 select-none">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span>{log}</span>
-                </div>
-              ))}
+            <div className="rounded-xl bg-zinc-950 border border-zinc-800 p-4 space-y-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-zinc-400">
+                  Progress
+                </span>
+                <span className="text-xs text-zinc-500">
+                  {logs.length} step{logs.length !== 1 ? "s" : ""} completed
+                </span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                  style={{
+                    width:
+                      phase === "done"
+                        ? "100%"
+                        : `${Math.min(90, logs.length * 10)}%`,
+                  }}
+                />
+              </div>
+              <div className="space-y-1 pt-1">
+                {logs.map((_, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <svg
+                      className="w-3 h-3 text-emerald-500 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-xs text-zinc-400">
+                      Step {i + 1} completed
+                    </span>
+                  </div>
+                ))}
+                {phase === "polling" && (
+                  <div className="flex items-center gap-2">
+                    <svg
+                      className="w-3 h-3 text-blue-400 shrink-0 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    <span className="text-xs text-zinc-500 animate-pulse">
+                      Working…
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

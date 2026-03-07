@@ -31,7 +31,6 @@ export default async function FitPage({
       </p>
     );
   }
-  console.log(job);
   return (
     <section
       className={`rounded-2xl border p-6 ${
