@@ -1,4 +1,5 @@
 import { getResumeInfo } from "@/app/actions/resume";
+import type { Job } from "@/components/JobCard";
 import ScrapePanel from "@/components/ScrapePanel";
 import { getUserId } from "@/lib/auth";
 import { formatDate } from "@/lib/dateUtils";
@@ -18,39 +19,62 @@ export default async function Home() {
   const userId = await getUserId();
   if (!userId) redirect("/login");
 
-  const [
-    { count: fitCount },
-    { count: notFitCount },
-    { count: appliedCount },
-    { data: recent },
-    resumeInfo,
-  ] = await Promise.all([
-    supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true })
-      .eq("fit", true)
-      .eq("user_id", userId)
-      .or("interested_in.is.null,interested_in.eq.true"),
-    supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true })
-      .eq("fit", false)
-      .eq("user_id", userId),
-    supabase
-      .from("jobs")
-      .select("*", { count: "exact", head: true })
-      .eq("applied", true)
-      .eq("fit", true)
-      .eq("user_id", userId)
-      .or("interested_in.is.null,interested_in.eq.true"),
-    supabase
-      .from("jobs")
-      .select("id, title, company, fit, fit_score, url, posted_date")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(5),
-    getResumeInfo(),
-  ]);
+  let fitCount: number | null = null;
+  let notFitCount: number | null = null;
+  let appliedCount: number | null = null;
+  let recent: Job[] | null = null;
+  let resumeInfo: Awaited<ReturnType<typeof getResumeInfo>> = {
+    ok: false,
+    error: "Unknown",
+  };
+
+  try {
+    const results = await Promise.all([
+      supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("fit", true)
+        .eq("user_id", userId)
+        .or("interested_in.is.null,interested_in.eq.true"),
+      supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("fit", false)
+        .eq("user_id", userId),
+      supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("applied", true)
+        .eq("fit", true)
+        .eq("user_id", userId)
+        .or("interested_in.is.null,interested_in.eq.true"),
+      supabase
+        .from("jobs")
+        .select("id, title, company, fit, fit_score, url, posted_date")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true })
+        .limit(5),
+      getResumeInfo(),
+    ]);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fitResult = results[0] as any;
+    if (fitResult.error) console.error("[Home] fitCount query error:", fitResult.error);
+    fitCount = fitResult.count ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    notFitCount = (results[1] as any).count ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const appliedResult = results[2] as any;
+    if (appliedResult.error) console.error("[Home] appliedCount query error:", appliedResult.error);
+    appliedCount = appliedResult.count ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recentResult = results[3] as any;
+    if (recentResult.error) console.error("[Home] recent jobs query error:", recentResult.error);
+    recent = recentResult.data;
+    resumeInfo = results[4] as Awaited<ReturnType<typeof getResumeInfo>>;
+  } catch (err) {
+    console.error("[Home] Unexpected error fetching dashboard data:", err);
+  }
   const hasResume = resumeInfo.ok && !!resumeInfo.fileName;
   const total = fitCount ?? 0;
   const applied = appliedCount ?? 0;

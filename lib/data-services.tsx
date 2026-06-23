@@ -5,17 +5,20 @@ export async function getJobsMatch() {
   const userId = await getUserId();
   if (!userId) return null;
 
-  const { data: jobs, error } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("user_id", userId);
+  try {
+    const { data: jobs, error } = await supabase
+      .from("jobs")
+      .select("*")
+      .eq("user_id", userId);
 
-  if (error) {
-    console.error(
-      "something wrong when fetching jobs from the server: ",
-      error,
-    );
+    if (error) {
+      console.error("[getJobsMatch] Supabase query error:", error);
+      return null;
+    }
+
+    return jobs ?? null;
+  } catch (err) {
+    console.error("[getJobsMatch] Unexpected error:", err);
+    return null;
   }
-
-  return jobs ?? null;
 }

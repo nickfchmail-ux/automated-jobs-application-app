@@ -23,15 +23,28 @@ export async function fetchWithAuth(
   const cookieStore = await cookies();
   const token = cookieStore.get("token")?.value;
 
-  const res = await fetch(`${BACKEND_URL}${path}`, {
-    ...init,
-    headers: {
-      ...init.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}${path}`, {
+      ...init,
+      headers: {
+        ...init.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (err) {
+    console.error(`[fetchWithAuth] Network error fetching ${path}:`, err);
+    throw err;
+  }
 
-  if (res.status !== 401) return res;
+  if (res.status !== 401) {
+    if (res.status >= 500) {
+      console.error(
+        `[fetchWithAuth] Backend ${res.status} on ${path}`,
+      );
+    }
+    return res;
+  }
 
   // --- Token expired: attempt a refresh ---
   const refreshToken = cookieStore.get("refresh_token")?.value;

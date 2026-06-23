@@ -1,4 +1,5 @@
 import FitFilters from "@/components/FitFilters";
+import type { Job } from "@/components/JobCard";
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Metadata } from "next";
@@ -14,11 +15,22 @@ export default async function NotInterestedPage() {
   const userId = await getUserId();
   if (!userId) redirect("/login");
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("interested_in", false)
-    .eq("user_id", userId);
+  let jobs: Job[] = [];
+  try {
+    const result = await supabase
+      .from("jobs")
+      .select("*")
+      .eq("interested_in", false)
+      .eq("user_id", userId);
+
+    if (result.error) {
+      console.error("[NotInterestedPage] Supabase query error:", result.error);
+    } else {
+      jobs = (result.data as Job[]) ?? [];
+    }
+  } catch (err) {
+    console.error("[NotInterestedPage] Unexpected error fetching jobs:", err);
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -52,7 +64,7 @@ export default async function NotInterestedPage() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
         <FitFilters
-          jobs={jobs ?? []}
+          jobs={jobs}
           emptyMessage="No not-interested jobs yet"
         />
       </main>
