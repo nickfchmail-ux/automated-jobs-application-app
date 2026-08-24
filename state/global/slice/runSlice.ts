@@ -186,10 +186,7 @@ const runSlice = createSlice({
       // it reaches a terminal state the run itself is done. Restore the phase
       // to "completed" so the dashboard's "Done — N great fits" state renders
       // (otherwise the phase stays stuck on "evaluating" forever).
-      if (
-        action.payload === "completed" ||
-        action.payload === "failed"
-      ) {
+      if (action.payload === "completed" || action.payload === "failed") {
         state.phase = "completed";
       }
     },

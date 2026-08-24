@@ -1,6 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSingleJobPrompt, buildResumePrompt } from "../src/lib/prompts.js";
+import test from "node:test";
+import { buildResumePrompt, buildSingleJobPrompt } from "../src/lib/prompts.js";
 import type { JobForEvaluation } from "../src/shared/types.js";
 
 const JOB: JobForEvaluation = {

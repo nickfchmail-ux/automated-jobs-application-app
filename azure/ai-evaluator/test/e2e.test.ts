@@ -1,6 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import Module from "node:module";
+import test from "node:test";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const requireCache = (Module as any)._cache as Record<string, unknown>;
@@ -127,7 +127,10 @@ function installMocks(sb: ReturnType<typeof makeSupabase>) {
     fetchResumeText: async () => "# Jane\n## Skills\n- React",
   });
   mock("../src/lib/resumeDocuments.js", {
-    storeGeneratedResume: async () => ({ resumeUrl: "https://cdn/r.html", fileName: "x" }),
+    storeGeneratedResume: async () => ({
+      resumeUrl: "https://cdn/r.html",
+      fileName: "x",
+    }),
   });
   mock("../src/lib/socket.js", {
     notifyStateChange: async () => {
@@ -156,7 +159,11 @@ test("e2e: HTTP evaluate → enqueues → returns 202 (does not run work in HTTP
 
   const { evaluate } = fresh("../src/functions/evaluate.js");
   const req = {
-    json: async () => ({ runId: "run-1", user_id: "user-1", search_key: "react" }),
+    json: async () => ({
+      runId: "run-1",
+      user_id: "user-1",
+      search_key: "react",
+    }),
   };
   const context = { log: () => {}, error: () => {} };
   const res = await evaluate(req as never, context as never);
@@ -164,10 +171,7 @@ test("e2e: HTTP evaluate → enqueues → returns 202 (does not run work in HTTP
   assert.equal(res.status, 202);
   assert.equal((res.jsonBody as { status: string }).status, "queued");
   assert.equal(state.enqueued.length, 1, "exactly one message enqueued");
-  assert.deepEqual(
-    (state.enqueued[0] as { runId: string }).runId,
-    "run-1",
-  );
+  assert.deepEqual((state.enqueued[0] as { runId: string }).runId, "run-1");
   // The HTTP handler must NOT have run the orchestrator (no eval runs inserted yet).
   assert.equal(state.evalRunsInserted.length, 0);
 });
@@ -238,7 +242,11 @@ test("e2e: queue worker runs the orchestrator end-to-end (writes fit + resume + 
   );
 
   assert.equal(state.jobUpdates.length, 1, "job was scored + written back");
-  const up = state.jobUpdates[0] as { fit: boolean; cover_letter: string; resume_status: string };
+  const up = state.jobUpdates[0] as {
+    fit: boolean;
+    cover_letter: string;
+    resume_status: string;
+  };
   assert.equal(up.fit, true);
   assert.equal(up.cover_letter, "Dear team");
   assert.equal(up.resume_status, "completed");

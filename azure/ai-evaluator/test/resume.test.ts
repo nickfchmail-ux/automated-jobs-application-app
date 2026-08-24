@@ -1,5 +1,5 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import { sanitizeResume } from "../src/lib/resume.js";
 
 const SAMPLE_RESUME = `# Jane Doe
@@ -34,7 +34,10 @@ test("sanitizeResume: document mode keeps contact but strips IDs/DOB", () => {
   const withId = `# John\njohn@x.com\nHKID: A123456(7)\n## Skills\n- Go`;
   const out = sanitizeResume(withId, { includeContact: true });
   assert.ok(/john@x.com/.test(out), "email kept for documents");
-  assert.ok(!/A123456/.test(out), "HKID should be redacted even in document mode");
+  assert.ok(
+    !/A123456/.test(out),
+    "HKID should be redacted even in document mode",
+  );
 });
 
 test("sanitizeResume: preserves truthful resume facts", () => {

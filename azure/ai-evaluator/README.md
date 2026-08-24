@@ -58,11 +58,11 @@ cover letter.
 
 ## Functions
 
-| Function        | Trigger | Purpose                                                                 |
-| --------------- | ------- | ----------------------------------------------------------------------- |
-| `evaluate`      | HTTP POST | Validate the run, enqueue one message (202 Accepted), return immediately. |
-| `evaluateWorker`| Service Bus queue | Run the ENTIRE evaluation in-process (scoring + resume + cover letter). |
-| `evaluateStatus`| HTTP GET  | Per-batch progress for a run (used by the frontend live UI).          |
+| Function         | Trigger           | Purpose                                                                   |
+| ---------------- | ----------------- | ------------------------------------------------------------------------- |
+| `evaluate`       | HTTP POST         | Validate the run, enqueue one message (202 Accepted), return immediately. |
+| `evaluateWorker` | Service Bus queue | Run the ENTIRE evaluation in-process (scoring + resume + cover letter).   |
+| `evaluateStatus` | HTTP GET          | Per-batch progress for a run (used by the frontend live UI).              |
 
 ## Local development
 
@@ -77,21 +77,21 @@ Requires [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-fu
 
 ## Environment variables (app settings)
 
-| Variable            | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
+| Variable                              | Purpose                                                  |
+| ------------------------------------- | -------------------------------------------------------- |
 | `ServiceBus__fullyQualifiedNamespace` | Evaluator's OWN Service Bus namespace (managed identity) |
-| `ServiceBus__credential` | `managedidentity` (prod) / `connectionstring` (local) |
-| `ServiceBus__connectionString` | SAS connection string for local dev            |
-| `EvaluationQueue`   | Evaluator's queue name (default `evaluation-requests`) |
-| `SupabaseUrl`       | Supabase project URL                           |
-| `SupabaseServiceKey`| Service-role key (bypasses RLS for write-back) |
-| `DeepSeekBaseUrl`   | OpenAI-compatible endpoint (default DeepSeek)  |
-| `DeepSeekApiKey`    | API key for the model provider                 |
-| `DeepSeekModel`     | Model id (e.g. `deepseek-chat`)                |
-| `EvaluationStatusTable` | Supabase table name for run/batch status   |
-| `DefaultCountryCode`| Default job location country (e.g. `hk`)       |
-| `STATE_WEBHOOK_URL` | Backend Express `/webhook/state` URL (socket push) |
-| `STATE_WEBHOOK_SECRET` | Shared secret for the webhook (`x-webhook-secret`) |
+| `ServiceBus__credential`              | `managedidentity` (prod) / `connectionstring` (local)    |
+| `ServiceBus__connectionString`        | SAS connection string for local dev                      |
+| `EvaluationQueue`                     | Evaluator's queue name (default `evaluation-requests`)   |
+| `SupabaseUrl`                         | Supabase project URL                                     |
+| `SupabaseServiceKey`                  | Service-role key (bypasses RLS for write-back)           |
+| `DeepSeekBaseUrl`                     | OpenAI-compatible endpoint (default DeepSeek)            |
+| `DeepSeekApiKey`                      | API key for the model provider                           |
+| `DeepSeekModel`                       | Model id (e.g. `deepseek-chat`)                          |
+| `EvaluationStatusTable`               | Supabase table name for run/batch status                 |
+| `DefaultCountryCode`                  | Default job location country (e.g. `hk`)                 |
+| `STATE_WEBHOOK_URL`                   | Backend Express `/webhook/state` URL (socket push)       |
+| `STATE_WEBHOOK_SECRET`                | Shared secret for the webhook (`x-webhook-secret`)       |
 
 ## Data written back (per job)
 

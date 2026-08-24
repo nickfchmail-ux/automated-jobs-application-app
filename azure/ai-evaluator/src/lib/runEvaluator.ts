@@ -1,7 +1,5 @@
-import {
-  evaluateSingleJobWithLLM,
-  generateResumeWithLLM,
-} from "./ai.js";
+import type { JobForEvaluation } from "../shared/types.js";
+import { evaluateSingleJobWithLLM, generateResumeWithLLM } from "./ai.js";
 import { buildResumePrompt, buildSingleJobPrompt } from "./prompts.js";
 import { fetchResumeText, sanitizeResume } from "./resume.js";
 import { storeGeneratedResume } from "./resumeDocuments.js";
@@ -11,7 +9,6 @@ import {
   updateEvaluationRunStatus,
 } from "./status.js";
 import { getSupabase } from "./supabase.js";
-import type { JobForEvaluation } from "../shared/types.js";
 
 /**
  * In-process evaluation orchestrator.
@@ -96,7 +93,9 @@ export async function evaluateRun(params: {
     .eq("user_id", userId)
     .then(({ error }) => {
       if (error) {
-        throw new Error(`Failed to clear old evaluation runs: ${error.message}`);
+        throw new Error(
+          `Failed to clear old evaluation runs: ${error.message}`,
+        );
       }
     });
 
@@ -119,9 +118,7 @@ export async function evaluateRun(params: {
     )
     .select("id, keyword");
   if (insertErr) {
-    throw new Error(
-      `Failed to create evaluation runs: ${insertErr.message}`,
-    );
+    throw new Error(`Failed to create evaluation runs: ${insertErr.message}`);
   }
   const runIdByKeyword = new Map(
     (inserted ?? []).map((r) => [r.keyword, r.id] as [string, string]),
@@ -146,9 +143,7 @@ export async function evaluateRun(params: {
   // Evaluate EVERY job with its own LLM call, writing results as we go so a
   // partial failure never loses the jobs already scored.
   for (const job of jobs) {
-    const batch = batches.find((b) =>
-      b.jobs.some((j) => j.id === job.id),
-    );
+    const batch = batches.find((b) => b.jobs.some((j) => j.id === job.id));
     const runId = batch ? runIdByKeyword.get(batch.keyword) : undefined;
     const counts = batch ? batchCounts.get(batch.keyword) : undefined;
 
@@ -272,7 +267,11 @@ export async function evaluateRun(params: {
   log(
     `evaluateRun done: processed=${processed} failed=${failed} (${jobs.length} jobs)`,
   );
-  return { totalJobs: jobs.length, processedJobs: processed, failedJobs: failed };
+  return {
+    totalJobs: jobs.length,
+    processedJobs: processed,
+    failedJobs: failed,
+  };
 }
 
 /** Group jobs by search_key (keyword); jobs without one fall into "general". */

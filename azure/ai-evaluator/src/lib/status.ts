@@ -1,8 +1,5 @@
+import type { EvaluationRunRow, EvaluationRunStatus } from "../shared/types.js";
 import { getSupabase } from "./supabase.js";
-import type {
-  EvaluationRunRow,
-  EvaluationRunStatus,
-} from "../shared/types.js";
 
 /**
  * Read/write helpers for the `evaluation_runs` status table.

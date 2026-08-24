@@ -1,6 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import Module from "node:module";
+import test from "node:test";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const requireCache = (Module as any)._cache as Record<string, unknown>;
@@ -51,10 +51,7 @@ function fakeSupabase(opts: {
         if (table === "evaluation_runs") calls.evalRunsInsert.push(rows);
         return builder;
       },
-      then: (
-        resolve: (v: unknown) => void,
-        reject?: (e: unknown) => void,
-      ) => {
+      then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => {
         try {
           resolve(result());
         } catch (e) {
@@ -106,7 +103,9 @@ function fakeSupabase(opts: {
     storage: {
       from: () => ({
         upload: async () => ({ error: null }),
-        getPublicUrl: () => ({ data: { publicUrl: "https://cdn/resume.html" } }),
+        getPublicUrl: () => ({
+          data: { publicUrl: "https://cdn/resume.html" },
+        }),
       }),
     },
     __calls: calls,
@@ -265,15 +264,24 @@ test("evaluateRun: scores fit + not-fit jobs, writes back, sets completed, notif
   const noFitUpdate = updates.find((u) => u.fit === false);
   assert.ok(noFitUpdate, "not-fit job update exists");
   assert.equal(noFitUpdate.cover_letter, null);
-  assert.equal(noFitUpdate.resume_status, undefined, "not-fit → no resume fields");
+  assert.equal(
+    noFitUpdate.resume_status,
+    undefined,
+    "not-fit → no resume fields",
+  );
 
   // Resume generated only for the fit job
   assert.equal(resumeWrites.length, 1);
   assert.equal((resumeWrites[0] as { jobId: string }).jobId, "job-fit");
 
   // Socket notified (start + per-job + terminal)
-  assert.ok(notifyCalls.length >= 3, `expected >=3 socket notifies, got ${notifyCalls.length}`);
-  assert.ok(notifyCalls.every((c) => c.userId === "user-1" && c.runId === "run-1"));
+  assert.ok(
+    notifyCalls.length >= 3,
+    `expected >=3 socket notifies, got ${notifyCalls.length}`,
+  );
+  assert.ok(
+    notifyCalls.every((c) => c.userId === "user-1" && c.runId === "run-1"),
+  );
 
   // LLM: 2 eval calls + 1 resume call
   assert.equal(llmCalls.filter((c) => c === "eval").length, 2);
@@ -284,7 +292,11 @@ test("evaluateRun: idempotent — clears old evaluation_runs before inserting", 
   installMocks(sb);
   const evaluateRun = loadOrchestrator();
 
-  await evaluateRun({ pipelineRunId: "run-1", userId: "user-1", log: () => {} });
+  await evaluateRun({
+    pipelineRunId: "run-1",
+    userId: "user-1",
+    log: () => {},
+  });
 
   const deletes = sb.__calls.evalRunsDelete as unknown[];
   assert.ok(deletes.length >= 1, "should delete old evaluation_runs");
@@ -298,7 +310,8 @@ test("evaluateRun: throws when no jobs → caller marks failed", async () => {
   const evaluateRun = loadOrchestrator();
 
   await assert.rejects(
-    () => evaluateRun({ pipelineRunId: "run-1", userId: "user-1", log: () => {} }),
+    () =>
+      evaluateRun({ pipelineRunId: "run-1", userId: "user-1", log: () => {} }),
     /No saved jobs/,
   );
 });
@@ -316,7 +329,8 @@ test("evaluateRun: throws when no resume", async () => {
   const evaluateRun = loadOrchestrator();
 
   await assert.rejects(
-    () => evaluateRun({ pipelineRunId: "run-1", userId: "user-1", log: () => {} }),
+    () =>
+      evaluateRun({ pipelineRunId: "run-1", userId: "user-1", log: () => {} }),
     /No resume found/,
   );
 });

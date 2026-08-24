@@ -1,5 +1,5 @@
-import { ServiceBusClient, ServiceBusSender } from "@azure/service-bus";
 import { DefaultAzureCredential } from "@azure/identity";
+import { ServiceBusClient, ServiceBusSender } from "@azure/service-bus";
 import type { EvaluateRequest } from "../shared/types.js";
 
 /**
@@ -15,7 +15,8 @@ import type { EvaluateRequest } from "../shared/types.js";
  * Production: ServiceBus__fullyQualifiedNamespace + ServiceBus__credential=managedidentity
  */
 
-const EVALUATION_QUEUE = process.env["EvaluationQueue"] || "evaluation-requests";
+const EVALUATION_QUEUE =
+  process.env["EvaluationQueue"] || "evaluation-requests";
 
 let _client: ServiceBusClient | null = null;
 let _sender: ServiceBusSender | null = null;

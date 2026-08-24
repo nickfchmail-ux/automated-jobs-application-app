@@ -14,6 +14,7 @@ in-process. There is **no function-to-function call chain** and only ONE
 queue (the old `evaluateBatch → generateJobDocuments` chain is gone).
 
 Per job:
+
 1. **One LLM call** returns fit + fit_score + reasons + cover letter.
 2. **fit === true** → a second LLM call generates the tailored resume HTML
    (stored in the `generated-resumes` bucket).

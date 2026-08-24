@@ -7,9 +7,9 @@ description: "JobSeek Azure Functions development: the two function apps (scrape
 
 ## The Two Function Apps
 
-| App       | Base URL                                                | Purpose                                            | Key env                                            |
-| --------- | ------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- |
-| Scraper   | `jobsautomation-fn`                                     | Scrape job boards, push jobs, manage pipeline runs | `NEXT_PUBLIC_AZURE_FN_URL`, `AZURE_SCRAPE_KEY`     |
+| App       | Base URL                                                | Purpose                                             | Key env                                            |
+| --------- | ------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------- |
+| Scraper   | `jobsautomation-fn`                                     | Scrape job boards, push jobs, manage pipeline runs  | `NEXT_PUBLIC_AZURE_FN_URL`, `AZURE_SCRAPE_KEY`     |
 | Evaluator | `jobsautomation-evaluator` (repo: `azure/ai-evaluator`) | AI-fit scoring + tailored resumes (single function) | `NEXT_PUBLIC_EVALUATOR_URL`, `AZURE_EVALUATOR_KEY` |
 
 The evaluator is a **separate deployable microservice** so slow/expensive LLM calls never block scraping and it scales independently. It is **queue-free** — the `evaluate` HTTP trigger runs the whole evaluation in-process and returns 202.

@@ -1,5 +1,5 @@
-import "dotenv/config";
 import { app } from "@azure/functions";
+import "dotenv/config";
 
 import { evaluate } from "./functions/evaluate.js";
 import { evaluateStatus } from "./functions/evaluateStatus.js";

@@ -1,9 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  parseSingleJobResult,
-  parseResumeDocument,
-} from "../src/lib/ai.js";
+import test from "node:test";
+import { parseResumeDocument, parseSingleJobResult } from "../src/lib/ai.js";
 
 test("parseSingleJobResult: parses a valid fit result", () => {
   const raw = JSON.stringify({
@@ -40,7 +37,8 @@ test("parseSingleJobResult: not-fit → cover_letter null, fit derived from scor
 });
 
 test("parseSingleJobResult: tolerates markdown code fences", () => {
-  const raw = "```json\n" + JSON.stringify({ jobId: "j1", fit_score: 90 }) + "\n```";
+  const raw =
+    "```json\n" + JSON.stringify({ jobId: "j1", fit_score: 90 }) + "\n```";
   const r = parseSingleJobResult(raw);
   assert.equal(r.fit_score, 90);
 });
@@ -64,7 +62,10 @@ test("parseSingleJobResult: throws on missing jobId", () => {
 });
 
 test("parseSingleJobResult: throws on unparseable JSON", () => {
-  assert.throws(() => parseSingleJobResult("not json at all"), /no parseable JSON|is not an object/);
+  assert.throws(
+    () => parseSingleJobResult("not json at all"),
+    /no parseable JSON|is not an object/,
+  );
 });
 
 test("parseResumeDocument: parses resumeHtml", () => {
