@@ -284,15 +284,15 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         </form>
       </div>
 
-      {/* Live run card */}
-      <LiveRunCard />
+      {/* Live run card — hidden during evaluation; the Match card owns that
+          experience (progress table + per-keyword fit/not-fit). */}
+      {phase !== "evaluating" && <LiveRunCard />}
 
       {/* Live job stream */}
       {(phase === "queued" ||
         phase === "scraping" ||
         phase === "processing" ||
         phase === "retrying" ||
-        phase === "evaluating" ||
         phase === "completed") && (
         <div>
           <div className="flex items-center justify-between mb-3">
