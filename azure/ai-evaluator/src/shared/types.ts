@@ -83,6 +83,11 @@ export interface EvaluateRequest {
  * ONE Service Bus message per job post — the fan-out unit. The `evaluate`
  * trigger enqueues one of these per unevaluated job; each `evaluateWorker`
  * invocation (which Azure scales across instances) processes exactly one.
+ *
+ * NOTE: the resume text is deliberately NOT carried on the message — with
+ * dozens of messages per batch, embedding the resume on each would exceed
+ * Service Bus's 256KB message-size limit. Workers fetch + sanitize the resume
+ * themselves (it's cached in Supabase storage, one small download per worker).
  */
 export interface EvaluateJobMessage {
   jobId: string;
@@ -91,10 +96,6 @@ export interface EvaluateJobMessage {
   /** The `evaluation_runs.id` row this job rolls up into (per-keyword batch). */
   evaluationRunId: string;
   keyword: string;
-  /** Contact-stripped resume text (grounds the evaluation LLM call). */
-  resumeText: string;
-  /** Contact-included resume text (grounds the tailored resume). */
-  resumeTextWithContact: string;
 }
 
 /** Response from the evaluate trigger. */

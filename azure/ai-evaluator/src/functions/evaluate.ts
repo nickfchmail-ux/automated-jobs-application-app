@@ -4,7 +4,6 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { fetchResumeText, sanitizeResume } from "../lib/resume.js";
 import { enqueueEvaluationJobs } from "../lib/serviceBus.js";
 import { getSupabase } from "../lib/supabase.js";
 import type {
@@ -129,22 +128,7 @@ export const evaluate: HttpHandler = async (
       return json({ error: "No saved jobs found for this run yet." }, 404);
     }
 
-    // 5. Fetch the resume ONCE (sanitized both ways) and put it on every
-    //    message so workers don't re-download it from storage.
-    let resumeText: string;
-    let resumeTextWithContact: string;
-    try {
-      const rawResume = await fetchResumeText(userId);
-      resumeText = sanitizeResume(rawResume, { includeContact: false });
-      resumeTextWithContact = sanitizeResume(rawResume, {
-        includeContact: true,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Resume unavailable";
-      return json({ error: msg }, 400);
-    }
-
-    // 6. Mark queued up-front so a second click is rejected, then create one
+    // 5. Mark queued up-front so a second click is rejected, then create one
     //    evaluation_runs batch row per keyword and enqueue ONE message per job.
     await sb
       .from("pipeline_runs")
@@ -206,8 +190,6 @@ export const evaluate: HttpHandler = async (
         runId,
         evaluationRunId,
         keyword,
-        resumeText,
-        resumeTextWithContact,
       };
     });
 

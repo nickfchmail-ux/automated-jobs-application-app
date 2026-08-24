@@ -1,6 +1,7 @@
 import type { EvaluateJobMessage, JobForEvaluation } from "../shared/types.js";
 import { evaluateSingleJobWithLLM, generateResumeWithLLM } from "./ai.js";
 import { buildResumePrompt, buildSingleJobPrompt } from "./prompts.js";
+import { fetchResumeText, sanitizeResume } from "./resume.js";
 import { storeGeneratedResume } from "./resumeDocuments.js";
 import { enhanceResumeForPrint } from "./resumePrint.js";
 import { getSupabase } from "./supabase.js";
@@ -8,14 +9,15 @@ import { getSupabase } from "./supabase.js";
 /**
  * Evaluate ONE job post end-to-end — the body of a single fan-out worker.
  *
- *   1. ONE LLM call → fit + fit_score + reasons + cover letter.
+ *   1. Fetch + sanitize the user's resume (once per worker).
+ *   2. ONE LLM call → fit + fit_score + reasons + cover letter.
  *      - fit === true  → cover letter included, and a SECOND LLM call
  *        generates the tailored resume HTML (stored in `generated-resumes`).
  *      - fit === false → cover letter null, no resume generated.
- *   2. Write the scored job row back.
+ *   3. Write the scored job row back.
  *
- * The resume text is passed in on the message (fetched once by the `evaluate`
- * trigger) so each worker doesn't re-download it from storage.
+ * The resume is fetched here (not carried on the message) so messages stay
+ * small and the batch fits within Service Bus's size limit.
  */
 export async function evaluateSingleJob(
   msg: EvaluateJobMessage,
@@ -35,9 +37,17 @@ export async function evaluateSingleJob(
   if (!jobRow) throw new Error(`Job ${msg.jobId} not found`);
   const job = jobRow as unknown as JobForEvaluation;
 
+  // Resume (contact-stripped for evaluation; contact included for the
+  // tailored resume).
+  const rawResume = await fetchResumeText(msg.userId);
+  const resumeText = sanitizeResume(rawResume, { includeContact: false });
+  const resumeTextWithContact = sanitizeResume(rawResume, {
+    includeContact: true,
+  });
+
   // Call 1 — evaluation + cover letter (fit → letter, not-fit → null).
   const evalResult = await evaluateSingleJobWithLLM(
-    buildSingleJobPrompt(msg.resumeText, job),
+    buildSingleJobPrompt(resumeText, job),
   );
   if (evalResult.jobId !== job.id) {
     throw new Error(`LLM returned jobId ${evalResult.jobId} for job ${job.id}`);
@@ -59,7 +69,7 @@ export async function evaluateSingleJob(
   if (evalResult.fit) {
     try {
       const { resumeHtml } = await generateResumeWithLLM(
-        buildResumePrompt(msg.resumeTextWithContact, job),
+        buildResumePrompt(resumeTextWithContact, job),
       );
       const printReadyHtml = enhanceResumeForPrint(resumeHtml);
       const { resumeUrl } = await storeGeneratedResume({

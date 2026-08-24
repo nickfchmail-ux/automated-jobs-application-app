@@ -285,8 +285,6 @@ test("e2e: queue worker scores one job and finalizes the batch", async () => {
       runId: "run-1",
       evaluationRunId: "eval-0",
       keyword: "react",
-      resumeText: "# Jane\n- React",
-      resumeTextWithContact: "# Jane\njane@x.com\n- React",
     } as never,
     { log: () => {}, error: () => {} } as never,
   );
