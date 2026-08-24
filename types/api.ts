@@ -66,6 +66,12 @@ export interface EvaluationBatchStatus {
   totalJobs: number;
   processedJobs: number;
   failedJobs: number;
+  /** Jobs scored as a fit. */
+  fitJobs?: number;
+  /** Jobs scored as not a fit. */
+  notFitJobs?: number;
+  /** Jobs still waiting to be scored. */
+  remainingJobs?: number;
   lastError: string | null;
   updatedAt: string | null;
 }

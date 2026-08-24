@@ -9,6 +9,7 @@ import EvaluationProgress from "@/components/EvaluationProgress";
 import { useSearchKeys } from "@/hooks/useSearchKeys";
 import {
   evaluationRunsUpdated,
+  evaluationStatusUpdated,
   runEvaluating,
 } from "@/state/global/slice/runSlice";
 import type { RootState } from "@/state/global/store";
@@ -103,12 +104,15 @@ export default function EvaluationStep() {
 
     async function poll() {
       if (disposed) return;
-      // REST status from the evaluator (per-batch progress).
+      // Primary source: REST status from the evaluator. It now returns
+      // fit/not-fit/remaining per batch (mirrors the socket payload), so this
+      // drives the table with real numbers.
       const status = await getEvaluationStatusAction(id);
       if (!disposed && status.ok && status.data.batches?.length) {
+        const batches = status.data.batches;
         dispatch(
           evaluationRunsUpdated(
-            status.data.batches.map((b) => ({
+            batches.map((b) => ({
               id: b.id,
               pipeline_run_id: id,
               user_id: "",
@@ -117,6 +121,9 @@ export default function EvaluationStep() {
               total_jobs: b.totalJobs,
               processed_jobs: b.processedJobs,
               failed_jobs: b.failedJobs,
+              fit_jobs: b.fitJobs ?? 0,
+              not_fit_jobs: b.notFitJobs ?? 0,
+              remaining_jobs: b.remainingJobs ?? 0,
               last_error: b.lastError,
               started_at: null,
               completed_at: b.updatedAt,
@@ -125,8 +132,24 @@ export default function EvaluationStep() {
             })),
           ),
         );
+        // Detect terminal state from the batches so the UI never stays stuck
+        // on "Matching… Live" even if the socket/realtime completion event is
+        // missed: all batches done → overall evaluation completed (or failed
+        // if nothing was processed).
+        const allTerminal = batches.every(
+          (b) => b.status === "completed" || b.status === "failed",
+        );
+        if (allTerminal) {
+          const anyProcessed = batches.some(
+            (b) => b.processedJobs > 0 || b.status === "completed",
+          );
+          dispatch(
+            evaluationStatusUpdated(anyProcessed ? "completed" : "failed"),
+          );
+        }
+        return; // REST is authoritative — skip the DB fallback
       }
-      // Direct Supabase read as a second source (cheap, realtime-friendly).
+      // Fallback: direct Supabase read (no fit counts) only when REST failed.
       const runs = await getEvaluationRunsAction(id);
       if (!disposed && runs.ok && runs.runs.length) {
         dispatch(evaluationRunsUpdated(runs.runs));
