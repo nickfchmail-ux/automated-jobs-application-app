@@ -1,0 +1,1 @@
+-- Pre-existing remote migration 0002 (applied via Supabase dashboard). Kept as a local placeholder for CLI parity.

@@ -1,154 +1,273 @@
 "use server";
 
-import { getToken } from "@/lib/auth";
-import { BACKEND_URL, fetchWithAuth } from "@/lib/fetchWithAuth";
+import { getToken, getUserId } from "@/lib/auth";
+import { fetchWithAuth } from "@/lib/fetchWithAuth";
+import { supabase } from "@/lib/supabase";
 import type {
-  JobStatus,
-  PollProgress,
-  PollResultData,
+  FunnelCounts,
+  PipelineRun,
+  RunSummary,
+  ScrapeTriggerResponse,
+  StatsRunDetailResponse,
+  StatsRunsResponse,
+  StatsSummaryResponse,
 } from "@/types/api";
+
+/* ------------------------------------------------------------------ */
+/*  Scrape trigger (Azure Function) + live stats (Express REST).      */
+/*                                                                     */
+/*  Server-only: the Azure Function key must NEVER reach the client.   */
+/* ------------------------------------------------------------------ */
+
+const SCRAPE_FUNCTION_URL =
+  (process.env.NEXT_PUBLIC_AZURE_FN_URL ||
+    "https://jobsautomation-fn.azurewebsites.net") + "/api/scrape";
+const SCRAPE_FUNCTION_KEY = process.env.AZURE_SCRAPE_KEY || "";
+const RUN_STATUS_FUNCTION_KEY = process.env.AZURE_RUN_STATUS_KEY || "";
 
 // ── Start scrape ─────────────────────────────────────────────────
 
 export type StartScrapeResult =
-  | { ok: true; jobId: string; pollUrl: string }
+  | { ok: true; runId: string; pollUrl: string }
   | { ok: false; error: string };
 
 export interface StartScrapeParams {
   keyword: string;
   pages?: number;
-  force?: boolean;
   boards?: string[];
 }
 
 export async function startScrapeAction(
   params: StartScrapeParams,
 ): Promise<StartScrapeResult> {
-  const token = await getToken();
-  if (!token) return { ok: false, error: "Not authenticated." };
+  const userId = await getUserId();
+  if (!userId) return { ok: false, error: "Not authenticated." };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
-    const res = await fetchWithAuth("/scrape", {
+    const res = await fetch(SCRAPE_FUNCTION_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-functions-key": SCRAPE_FUNCTION_KEY,
+      },
       body: JSON.stringify({
         keyword: params.keyword,
         pages: params.pages ?? 1,
-        force: params.force ?? false,
         boards: params.boards,
+        user_id: userId,
+        country_code: "hk",
       }),
       signal: controller.signal,
+      cache: "no-store",
     });
     clearTimeout(timeout);
 
     if (!res.ok) {
-      // Try JSON first, fall back to text (Render may return HTML error pages)
       const contentType = res.headers.get("content-type") ?? "";
       let errorMsg = `Server error ${res.status}`;
-
       if (contentType.includes("application/json")) {
         const body = await res.json().catch(() => ({}));
-        if (body?.message || body?.error) {
-          errorMsg = body.message || body.error;
-        }
-      } else {
-        const text = await res.text().catch(() => "");
-        console.error(
-          `[startScrapeAction] Backend returned ${res.status} (non-JSON):`,
-          text.slice(0, 500),
-        );
-        if (res.status === 502 || res.status === 503 || res.status === 504) {
-          errorMsg =
-            "The scrape server is currently unavailable. It may be waking up from idle — please try again in 30 seconds.";
-        } else if (res.status === 500) {
-          errorMsg =
-            "The scrape server encountered an internal error. This may be due to an invalid API key or database connection issue on the backend.";
-        }
+        if (body?.message || body?.error) errorMsg = body.message || body.error;
       }
-
       console.error(
-        `[startScrapeAction] Backend ${BACKEND_URL}/scrape returned ${res.status}: ${errorMsg}`,
+        `[startScrapeAction] Azure Function returned ${res.status}: ${errorMsg}`,
       );
       return { ok: false, error: errorMsg };
     }
 
-    const data = await res.json();
-    return { ok: true, jobId: data.jobId, pollUrl: data.pollUrl ?? "" };
+    const data = (await res.json()) as ScrapeTriggerResponse;
+    return { ok: true, runId: data.runId, pollUrl: data.pollUrl ?? "" };
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") {
       return {
         ok: false,
         error:
-          "Request timed out after 2 minutes. The scrape server may be overloaded or stuck.",
+          "The job search took too long to start. Please try again in a moment.",
       };
     }
     console.error("[startScrapeAction] Network error:", e);
     return {
       ok: false,
-      error:
-        "Could not reach the scrape server. It may be down or waking up from idle — please try again in 30 seconds.",
+      error: "Could not start your search. Please try again in a moment.",
     };
   }
 }
 
-// ── Poll job ─────────────────────────────────────────────────────
+// ── Live stats (Express REST) ────────────────────────────────────
 
-export type PollResult =
-  | {
-      ok: true;
-      status: JobStatus;
-      logs: string[];
-      progress?: PollProgress;
-      result?: PollResultData;
-      error?: string;
-    }
+export type StatsSummaryResult =
+  | { ok: true; counts: FunnelCounts }
   | { ok: false; error: string };
 
-export async function pollJobAction(jobId: string): Promise<PollResult> {
+export async function statsSummaryAction(): Promise<StatsSummaryResult> {
   const token = await getToken();
   if (!token) return { ok: false, error: "Not authenticated." };
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-    const res = await fetchWithAuth(`/jobs/${jobId}`, {
-      cache: "no-store",
+    const res = await fetchWithAuth("/stats/summary", { cache: "no-store" });
+    if (!res.ok) {
+      return { ok: false, error: `Server error ${res.status}` };
+    }
+    const data = (await res.json()) as StatsSummaryResponse;
+    return { ok: true, counts: data.counts };
+  } catch (e) {
+    console.error("[statsSummaryAction] Network error:", e);
+    return { ok: false, error: "Could not reach the stats server." };
+  }
+}
+
+export type StatsRunsResult =
+  | { ok: true; runs: RunSummary[] }
+  | { ok: false; error: string };
+
+export async function statsRunsAction(): Promise<StatsRunsResult> {
+  const token = await getToken();
+  if (!token) return { ok: false, error: "Not authenticated." };
+
+  try {
+    const res = await fetchWithAuth("/stats/runs", { cache: "no-store" });
+    if (!res.ok) {
+      return { ok: false, error: `Server error ${res.status}` };
+    }
+    const data = (await res.json()) as StatsRunsResponse;
+    return { ok: true, runs: data.runs ?? [] };
+  } catch (e) {
+    console.error("[statsRunsAction] Network error:", e);
+    return { ok: false, error: "Could not reach the stats server." };
+  }
+}
+
+// ── Per-run detail (Express REST) ────────────────────────────────
+
+export type StatsRunDetailResult =
+  | { ok: true; detail: StatsRunDetailResponse }
+  | { ok: false; error: string };
+
+/** `GET /stats/runs/:runId` — one run's funnel + per-board breakdown. */
+export async function statsRunDetailAction(
+  runId: string,
+): Promise<StatsRunDetailResult> {
+  const token = await getToken();
+  if (!token) return { ok: false, error: "Not authenticated." };
+
+  try {
+    const res = await fetchWithAuth(
+      `/stats/runs/${encodeURIComponent(runId)}`,
+      {
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) {
+      return { ok: false, error: `Server error ${res.status}` };
+    }
+    const data = (await res.json()) as StatsRunDetailResponse;
+    return { ok: true, detail: data };
+  } catch (e) {
+    console.error("[statsRunDetailAction] Network error:", e);
+    return { ok: false, error: "Could not reach the stats server." };
+  }
+}
+
+// ── Azure run-status fallback (Azure Function) ───────────────────
+
+export type AzureRunStatus = {
+  run: {
+    id: string;
+    status: PipelineRun["status"];
+    keyword: string;
+    total_jobs: number;
+    processed_jobs: number;
+    fit_jobs: number;
+    failed_jobs: number;
+    last_error: string | null;
+  };
+  jobsCount: number;
+  statusLabel: string;
+};
+
+export type GetAzureRunStatusResult =
+  | { ok: true; data: AzureRunStatus }
+  | { ok: false; error: string };
+
+/**
+ * `GET /api/runs/{runId}` on the Azure Functions host. This is the documented
+ * REST fallback for run status + job count (returns a human `statusLabel`).
+ * The key lives server-side only.
+ */
+export async function getAzureRunStatusAction(
+  runId: string,
+): Promise<GetAzureRunStatusResult> {
+  const base =
+    process.env.NEXT_PUBLIC_AZURE_FN_URL ||
+    "https://jobsautomation-fn.azurewebsites.net";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const res = await fetch(`${base}/api/runs/${encodeURIComponent(runId)}`, {
+      headers: { "x-functions-key": RUN_STATUS_FUNCTION_KEY },
       signal: controller.signal,
+      cache: "no-store",
     });
     clearTimeout(timeout);
 
     if (!res.ok) {
       const contentType = res.headers.get("content-type") ?? "";
       let errorMsg = `Server error ${res.status}`;
-
       if (contentType.includes("application/json")) {
         const body = await res.json().catch(() => ({}));
-        if (body?.message || body?.error) {
-          errorMsg = body.message || body.error;
-        }
+        if (body?.error) errorMsg = body.error;
       }
-
-      console.error(
-        `[pollJobAction] Backend returned ${res.status} for job ${jobId}: ${errorMsg}`,
-      );
       return { ok: false, error: errorMsg };
     }
-
-    const data = await res.json();
-    return {
-      ok: true,
-      status: data.status,
-      logs: data.logs ?? [],
-      progress: data.progress,
-      result: data.result,
-      error: data.error,
-    };
+    const data = (await res.json()) as AzureRunStatus;
+    return { ok: true, data };
   } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") {
-      return { ok: false, error: "Poll request timed out." };
+    clearTimeout(timeout);
+    console.error("[getAzureRunStatusAction] Network error:", e);
+    return { ok: false, error: "Could not reach the run-status service." };
+  }
+}
+
+// ── Resolve run status from pipeline_runs ─────────────────────────
+
+export type GetPipelineRunResult =
+  | { ok: true; pipelineRun: PipelineRun | null }
+  | { ok: false; error: string };
+
+/**
+ * `POST /api/scrape` creates a `pipeline_runs` row and returns its `id` as
+ * `runId`. This fetches that row (scoped to the current user) so we can seed
+ * the live run status before the first Realtime/WebSocket event arrives.
+ */
+export async function getPipelineRunAction(
+  runId: string,
+): Promise<GetPipelineRunResult> {
+  const userId = await getUserId();
+  if (!userId) return { ok: false, error: "Not authenticated." };
+
+  try {
+    const { data, error } = await supabase
+      .from("pipeline_runs")
+      .select("*")
+      .eq("id", runId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        "[getPipelineRunAction] Supabase query error:",
+        error.message,
+      );
+      return { ok: false, error: error.message };
     }
-    return { ok: false, error: "Could not reach scrape server." };
+
+    return { ok: true, pipelineRun: (data as PipelineRun) ?? null };
+  } catch (e) {
+    console.error("[getPipelineRunAction] Unexpected error:", e);
+    return { ok: false, error: "Could not look up the pipeline run." };
   }
 }

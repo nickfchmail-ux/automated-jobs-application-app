@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: "Not Interested Jobs",
+  title: "Skipped Jobs",
 };
 
 export default async function NotInterestedPage() {
@@ -52,21 +52,18 @@ export default async function NotInterestedPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-              Not Interested
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 font-display">
+              Skipped
             </h1>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Jobs you&apos;re not interested in
+              Jobs you&apos;ve skipped
             </p>
           </div>
         </div>
       </div>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
-        <FitFilters
-          jobs={jobs}
-          emptyMessage="No not-interested jobs yet"
-        />
+        <FitFilters jobs={jobs} emptyMessage="No skipped jobs yet" />
       </main>
     </div>
   );

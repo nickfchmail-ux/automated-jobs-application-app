@@ -45,10 +45,10 @@ export default function AppliedToggle({
     <button
       onClick={handleToggle}
       disabled={isPending || disabled}
-      className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg border transition-colors ${
+      className={`inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl shadow-sm transition-all hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 ${
         applied
-          ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600"
-          : "bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-600"
+          ? "bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-600"
+          : "bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-600"
       }`}
     >
       {applied ? (

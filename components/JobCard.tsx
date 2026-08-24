@@ -1,5 +1,7 @@
 import { formatDate } from "@/lib/dateUtils";
+import type { ResumeStatus } from "@/types/api";
 import Link from "next/link";
+import ResumeStatusBadge from "./ResumeStatusBadge";
 
 export type Job = {
   id: string;
@@ -30,6 +32,10 @@ export type Job = {
   applied?: boolean | null;
   applied_on?: string | null;
   interested_in?: boolean | null;
+  /** Tailored-resume fields (auto-generated when the job is a match). */
+  resume_status?: string | null;
+  resume_url?: string | null;
+  resume_pdf_url?: string | null;
 };
 
 type JobSource = {
@@ -107,12 +113,21 @@ function ScoreBadge({ score }: { score: number | null }) {
       ? "bg-emerald-100 text-emerald-800 border-emerald-200"
       : score >= 45
         ? "bg-amber-100 text-amber-800 border-amber-200"
-        : "bg-red-100 text-red-800 border-red-200";
+        : "bg-rose-100 text-rose-800 border-rose-200";
   return (
     <span
-      className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${color}`}
+      className={`text-xs font-semibold px-2.5 py-1 rounded-full border tabular-nums ${color}`}
     >
       {score} / 100
+    </span>
+  );
+}
+
+/** Neutral treatment for jobs that haven't been AI-scored yet — never imply a score. */
+function AwaitingEvaluationBadge() {
+  return (
+    <span className="text-xs font-medium px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+      Awaiting evaluation
     </span>
   );
 }
@@ -186,6 +201,14 @@ export default function JobCard({ job }: { job: Job }) {
               >
                 {job.applied ? "Applied" : "Not Applied"}
               </span>
+              {/* Tailored resume (auto-generated when this job matches) */}
+              {job.fit && job.resume_status && job.resume_status !== "none" && (
+                <ResumeStatusBadge
+                  status={job.resume_status as ResumeStatus}
+                  resumeUrl={job.resume_url}
+                  resumePdfUrl={job.resume_pdf_url}
+                />
+              )}
             </div>
             <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 group-hover:text-blue-600 dark:group-hover:text-blue-400 leading-snug line-clamp-2 transition-colors">
               {job.title}
@@ -195,6 +218,7 @@ export default function JobCard({ job }: { job: Job }) {
             </p>
           </div>
           <ScoreBadge score={job.fit_score} />
+          {job.fit_score === null && <AwaitingEvaluationBadge />}
         </div>
 
         {/* Meta */}

@@ -31,19 +31,31 @@ function relativeTextToDays(value: string): number {
  *
  * actual = scraped_date − relativeOffset(posted_date)
  *
- * Returns -Infinity for unparseable values so they sort last (oldest).
+ * When `posted_date` is missing (e.g. manual jobs), fall back to the
+ * `scraped_date` so newly discovered jobs don't sort as "infinitely old"
+ * (which pushed them to the bottom of fit/not-fit lists).
+ *
+ * Returns -Infinity only when both dates are unusable.
  */
 export function computeActualPostedTimestamp(
   postedDate: string | null,
   scrapedDate: string | null,
 ): number {
-  if (!postedDate || !scrapedDate) return -Infinity;
+  // If posted_date is missing, use scraped_date as the anchor (parse ISO).
+  if (!postedDate) {
+    if (!scrapedDate) return -Infinity;
+    const [sy, sm, sd] = scrapedDate.substring(0, 10).split("-").map(Number);
+    if (isNaN(sy) || isNaN(sm) || isNaN(sd)) return -Infinity;
+    return Date.UTC(sy, sm - 1, sd);
+  }
 
   // If posted_date is already an ISO date, use it directly
   if (/^\d{4}-\d{2}-\d{2}/.test(postedDate)) {
     const [y, m, d] = postedDate.substring(0, 10).split("-").map(Number);
     return Date.UTC(y, m - 1, d);
   }
+
+  if (!scrapedDate) return -Infinity;
 
   const daysAgo = relativeTextToDays(postedDate);
   if (daysAgo === Infinity) return -Infinity;

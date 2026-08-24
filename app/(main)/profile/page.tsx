@@ -19,14 +19,12 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-
-
       {/* Page header */}
       <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center shrink-0">
             <svg
-              className="w-5 h-5 text-blue-600 dark:text-blue-400"
+              className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -40,7 +38,7 @@ export default async function ProfilePage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 font-display">
               Profile
             </h1>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">

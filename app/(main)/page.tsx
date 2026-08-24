@@ -1,13 +1,11 @@
-import { getResumeInfo } from "@/app/actions/resume";
-import type { Job } from "@/components/JobCard";
-import ScrapePanel from "@/components/ScrapePanel";
+import ScrapePanelWithResume from "@/app/(main)/_resume";
+import DashboardStats from "@/app/(main)/_stats";
+import EvaluationStep from "@/components/EvaluationStep";
+import RunHistory from "@/components/RunHistory";
 import { getUserId } from "@/lib/auth";
-import { formatDate } from "@/lib/dateUtils";
-import { supabase } from "@/lib/supabase";
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 export const revalidate = 0;
 
@@ -15,311 +13,89 @@ export const metadata: Metadata = {
   title: "Dashboard",
 };
 
+/**
+ * The dashboard shell has ZERO top-level awaits. The only thing awaited is
+ * the auth check (fast). Every data-dependent section — the Search panel's
+ * resume status, and the stat cards / app tracker / recent jobs — streams in
+ * behind <Suspense>, so the user sees the UI immediately instead of a bare
+ * "Loading dashboard…" spinner.
+ */
 export default async function Home() {
   const userId = await getUserId();
   if (!userId) redirect("/login");
 
-  let fitCount: number | null = null;
-  let notFitCount: number | null = null;
-  let appliedCount: number | null = null;
-  let recent: Job[] | null = null;
-  let resumeInfo: Awaited<ReturnType<typeof getResumeInfo>> = {
-    ok: false,
-    error: "Unknown",
-  };
-
-  try {
-    const results = await Promise.all([
-      supabase
-        .from("jobs")
-        .select("*", { count: "exact", head: true })
-        .eq("fit", true)
-        .eq("user_id", userId)
-        .or("interested_in.is.null,interested_in.eq.true"),
-      supabase
-        .from("jobs")
-        .select("*", { count: "exact", head: true })
-        .eq("fit", false)
-        .eq("user_id", userId),
-      supabase
-        .from("jobs")
-        .select("*", { count: "exact", head: true })
-        .eq("applied", true)
-        .eq("fit", true)
-        .eq("user_id", userId)
-        .or("interested_in.is.null,interested_in.eq.true"),
-      supabase
-        .from("jobs")
-        .select("id, title, company, fit, fit_score, url, posted_date")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: true })
-        .limit(5),
-      getResumeInfo(),
-    ]);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fitResult = results[0] as any;
-    if (fitResult.error) console.error("[Home] fitCount query error:", fitResult.error);
-    fitCount = fitResult.count ?? null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    notFitCount = (results[1] as any).count ?? null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const appliedResult = results[2] as any;
-    if (appliedResult.error) console.error("[Home] appliedCount query error:", appliedResult.error);
-    appliedCount = appliedResult.count ?? null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const recentResult = results[3] as any;
-    if (recentResult.error) console.error("[Home] recent jobs query error:", recentResult.error);
-    recent = recentResult.data;
-    resumeInfo = results[4] as Awaited<ReturnType<typeof getResumeInfo>>;
-  } catch (err) {
-    console.error("[Home] Unexpected error fetching dashboard data:", err);
-  }
-  const hasResume = resumeInfo.ok && !!resumeInfo.fileName;
-  const total = fitCount ?? 0;
-  const applied = appliedCount ?? 0;
-  const pending = total - applied;
-
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      {/* Hero */}
-      <div className="bg-indigo-800 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex flex-col max-w-5xl mx-auto px-4 sm:px-8 py-12 bg-indigo-800 items-center justify-center">
-          <Image
-            src="/JobSeek.png"
-            alt="JobSeek"
-            width={550}
-            height={150}
-            priority
-          />
-
-          <p className="flex self-start gap-2 mt-2 text-amber-500 dark:text-zinc-400">
-            <strong className={`text-fuchsia-200`}>{total}</strong> job
-            {total !== 1 ? "s" : ""} match
-            {total !== 1 ? "" : "es"}{" "}
-          </p>
-        </div>
-      </div>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-8 py-10 space-y-10">
-        <ScrapePanel hasResume={hasResume} />
-        {/* Stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <Link
-            href="/fit"
-            className="group block rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-700 transition-all"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center">
-                <svg
-                  className="w-6 h-6 text-emerald-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <svg
-                className="w-4 h-4 text-zinc-300 group-hover:text-emerald-400 transition-colors"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-            </div>
-            <p className="text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-              {fitCount ?? 0}
-            </p>
-            <p className="mt-1 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-              Good Fit Jobs
-            </p>
-            <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-              AI marked these as a match for your profile
-            </p>
-          </Link>
-
-          <Link
-            href="/not-fit"
-            className="group block rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm hover:shadow-md hover:border-red-300 dark:hover:border-red-700 transition-all"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-11 h-11 rounded-xl bg-red-50 dark:bg-red-950 flex items-center justify-center">
-                <svg
-                  className="w-6 h-6 text-red-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <svg
-                className="w-4 h-4 text-zinc-300 group-hover:text-red-400 transition-colors"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-            </div>
-            <p className="text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-              {notFitCount ?? 0}
-            </p>
-            <p className="mt-1 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-              Not a Fit
-            </p>
-            <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-              Doesn't match your current experience level
-            </p>
-          </Link>
-        </div>
-
-        {/* Applied tracker */}
-        <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
-                <svg
-                  className="w-6 h-6 text-blue-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                  />
-                </svg>
-              </div>
-              <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-                Application Tracker
-              </p>
-            </div>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500">
-              {fitCount} total
-            </p>
+      <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 space-y-8">
+        {/* Compact brand bar — replaces the giant logo hero */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold">
+            <span className="text-lg">J</span>
           </div>
-          <div className="flex gap-6 mb-4">
-            <div>
-              <p className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
-                {applied}
-              </p>
-              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5">
-                Applied
-              </p>
-            </div>
-            <div className="w-px bg-zinc-100 dark:bg-zinc-800" />
-            <div>
-              <p className="text-3xl font-bold  dark:text-zinc-50 text-green-400">
-                {fitCount! - applied}
-              </p>
-              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mt-0.5 ">
-                Not Yet Applied
-              </p>
-            </div>
-          </div>
-          {total > 0 && (
-            <div className="w-full h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-500 transition-all"
-                style={{ width: `${Math.round((applied / fitCount!) * 100)}%` }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Recently added */}
-        {recent && recent.length > 0 && (
           <div>
-            <h2 className="text-base font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
-              Recently Scraped
-            </h2>
-            <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden shadow-sm">
-              {recent.map((job) => (
+            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50 font-display">
+              Your job search, simplified
+            </h1>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Scrape jobs, match them to your CV, and track your applications.
+            </p>
+          </div>
+        </div>
+
+        {/* Guided flow strip: Step 1 Search → Step 2 Match */}
+        <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden">
+          <div className="px-5 py-3 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">
+                1
+              </span>
+              Search
+            </span>
+            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">
+                2
+              </span>
+              Match
+            </span>
+          </div>
+          <div className="p-5 space-y-5">
+            <Suspense
+              fallback={
+                <div className="space-y-3">
+                  <div className="h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 animate-pulse" />
+                  <div className="h-7 w-64 rounded-full bg-zinc-100 dark:bg-zinc-800 animate-pulse" />
+                </div>
+              }
+            >
+              <ScrapePanelWithResume />
+            </Suspense>
+            <div className="border-t border-zinc-100 dark:border-zinc-800" />
+            <EvaluationStep />
+          </div>
+        </div>
+
+        <RunHistory />
+
+        {/* Stat-heavy sections stream in so the Search → Match UI paints first */}
+        <Suspense
+          fallback={
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              {[0, 1].map((i) => (
                 <div
-                  key={job.id}
-                  className="relative flex items-center justify-between px-5 py-3.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors group"
+                  key={i}
+                  className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 shadow-sm animate-pulse"
                 >
-                  {/* Stretched link covers the whole row */}
-                  <Link
-                    href={`/jobs/${job.id}`}
-                    className="absolute inset-0 z-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
-                    aria-label={`View details for ${job.title}`}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate transition-colors">
-                      {job.title}
-                    </p>
-                    <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                      {job.company} · {formatDate(job.posted_date)}
-                    </p>
-                  </div>
-                  <div className="relative z-10 ml-4 flex items-center gap-2 shrink-0">
-                    {job.fit_score !== null && (
-                      <span className="text-xs text-zinc-400">
-                        {job.fit_score}/100
-                      </span>
-                    )}
-                    <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        job.fit
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
-                          : "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-                      }`}
-                    >
-                      {job.fit ? "Fit" : "Not fit"}
-                    </span>
-                    <a
-                      href={job.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-zinc-300 hover:text-blue-500 dark:text-zinc-600 dark:hover:text-blue-400 transition-colors"
-                      title="Open on job board"
-                    >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        />
-                      </svg>
-                    </a>
-                  </div>
+                  <div className="w-11 h-11 rounded-xl bg-zinc-100 dark:bg-zinc-800 mb-4" />
+                  <div className="h-8 w-16 rounded bg-zinc-100 dark:bg-zinc-800 mb-2" />
+                  <div className="h-3 w-28 rounded bg-zinc-100 dark:bg-zinc-800" />
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          }
+        >
+          <DashboardStats />
+        </Suspense>
       </main>
     </div>
   );

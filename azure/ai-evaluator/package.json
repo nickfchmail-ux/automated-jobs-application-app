@@ -1,0 +1,31 @@
+{
+  "name": "ai-evaluator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Separate Azure Functions microservice that evaluates scraped jobs against a user's resume. One queue + one worker: scoring + cover letter + tailored resume per fit job.",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "clean": "rimraf dist",
+    "prestart": "npm run clean && npm run build",
+    "start": "func start",
+    "pretest": "npm run build && tsc -p tsconfig.test.json",
+    "test": "node --test \"dist/test/*.test.js\"",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.0",
+    "@azure/identity": "^4.13.2",
+    "@azure/service-bus": "^7.9.5",
+    "@supabase/supabase-js": "^2.98.0",
+    "dotenv": "^17.3.1",
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "rimraf": "^6.0.1",
+    "typescript": "^5"
+  },
+  "main": "dist/src/index.js"
+}

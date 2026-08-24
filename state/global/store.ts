@@ -1,11 +1,11 @@
 import { configureStore } from "@reduxjs/toolkit";
 import jobReducer from "./slice/jobSlice";
-import scrapeReducer from "./slice/scrapeSlice";
+import runReducer from "./slice/runSlice";
 
 export const store = configureStore({
   reducer: {
     jobs: jobReducer,
-    scrape: scrapeReducer,
+    run: runReducer,
   },
 });
 

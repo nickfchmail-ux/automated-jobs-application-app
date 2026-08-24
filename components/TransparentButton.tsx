@@ -25,17 +25,17 @@ export default function TransparentButton({
   noBorder = false,
 }: PropsWithChildren<TransparentButtonProps>) {
   const colorMap: Record<colors, string> = {
-    blue: "border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/60",
-    red: "border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/60",
+    blue: "border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60",
+    red: "border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60",
     black:
-      "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800",
+      "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/70",
     green:
       "border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/60",
   };
 
   const activeMap: Record<colors, string> = {
-    blue: "border-blue-400 dark:border-blue-600 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300",
-    red: "border-red-400 dark:border-red-600 bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400",
+    blue: "border-indigo-400 dark:border-indigo-600 bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300",
+    red: "border-rose-400 dark:border-rose-600 bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400",
     black:
       "border-zinc-400 dark:border-zinc-500 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200",
     green:
@@ -51,7 +51,7 @@ export default function TransparentButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-3 text-sm font-medium px-3 py-1.5 rounded-lg ${noBorder ? "" : "border"} transition-colors ${disabled ? "border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600" : colorStyle}`}
+      className={`inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-xl shadow-sm ${noBorder ? "" : "border"} transition-all hover:shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${disabled ? "border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 shadow-none cursor-not-allowed" : colorStyle}`}
     >
       {icon && iconPosition === "left" && (
         <span className="w-4 h-4 flex items-center justify-center shrink-0">

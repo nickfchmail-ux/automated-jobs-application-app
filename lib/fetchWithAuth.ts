@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-export const BACKEND_URL = process.env.BACKEND_URL || "";
+export const BACKEND_URL = process.env.NEXT_PUBLIC_API_SERVER || "";
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -39,9 +39,7 @@ export async function fetchWithAuth(
 
   if (res.status !== 401) {
     if (res.status >= 500) {
-      console.error(
-        `[fetchWithAuth] Backend ${res.status} on ${path}`,
-      );
+      console.error(`[fetchWithAuth] Backend ${res.status} on ${path}`);
     }
     return res;
   }

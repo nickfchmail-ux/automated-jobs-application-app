@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!azure/ai-evaluator/.env.example
 
 # vercel
 .vercel
@@ -42,3 +44,11 @@ next-env.d.ts
 
 # Windows reserved names
 nul
+
+# ── Azure AI evaluator (deployed separately via `func publish`) ──────────
+# NEVER commit credentials, local dev settings, or build output.
+# (.env* files are covered by the global rule above; .env.example is kept.)
+azure/ai-evaluator/local.settings.json
+azure/ai-evaluator/dist/
+azure/ai-evaluator/node_modules/
+azure/ai-evaluator/package-lock.json

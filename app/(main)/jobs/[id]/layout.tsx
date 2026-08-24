@@ -3,14 +3,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import ResumeActions from "@/components/ResumeActions";
 import { getUserId } from "@/lib/auth";
 import { formatDate } from "@/lib/dateUtils";
 import { supabase } from "@/lib/supabase";
+import { getJob } from "./_data";
 import AppliedToggle from "./AppliedToggle";
 import CoverLetterActions from "./CoverLetterActions";
 import JobTabs from "./JobTabs";
 import NotInterestedButton from "./NotInterestedButton";
-import { getJob } from "./_data";
 
 export const revalidate = 0;
 
@@ -64,14 +65,14 @@ function detectSource(url: string): JobSource {
       borderColor: "border-orange-200 dark:border-orange-800",
     };
 
-     if (url.includes("linkedin.com"))
-       return {
-         name: "LinkedIn",
-         shortName: "LinkedIn",
-         color: "text-orange-700 dark:text-orange-300",
-         bgColor: "bg-orange-50 dark:bg-orange-950",
-         borderColor: "border-orange-200 dark:border-orange-800",
-       };
+  if (url.includes("linkedin.com"))
+    return {
+      name: "LinkedIn",
+      shortName: "LinkedIn",
+      color: "text-orange-700 dark:text-orange-300",
+      bgColor: "bg-orange-50 dark:bg-orange-950",
+      borderColor: "border-orange-200 dark:border-orange-800",
+    };
   if (url.includes("offertoday.com"))
     return {
       name: "OfferToday",
@@ -359,6 +360,18 @@ export default async function JobDetailLayout({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Tailored resume — only for jobs the AI says are a good fit */}
+          {job.fit && (
+            <ResumeActions
+              jobId={job.id}
+              title={job.title}
+              company={job.company}
+              initialStatus={job.resume_status}
+              resumeUrl={job.resume_url}
+              resumePdfUrl={job.resume_pdf_url}
+            />
           )}
 
           {job.about_company && (

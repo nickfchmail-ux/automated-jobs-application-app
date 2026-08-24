@@ -53,7 +53,7 @@ export default async function FitPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 font-display">
               Good Fit Jobs
             </h1>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -64,10 +64,7 @@ export default async function FitPage() {
       </div>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8">
-        <FitFilters
-          jobs={jobs}
-          emptyMessage="No matching jobs yet"
-        />
+        <FitFilters jobs={jobs} emptyMessage="No matching jobs yet" />
       </main>
     </div>
   );

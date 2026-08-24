@@ -1,19 +1,17 @@
 "use client";
 
-import ArrowBackIosNewIcon from "@mui/icons-material/ArrowBackIosNew";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useRouter } from "next/navigation";
-import { PropsWithChildren } from "react";
 import TransparentButton from "./TransparentButton";
-type BackButtonProps = {};
 
-export default function BackButton({}: PropsWithChildren<BackButtonProps>) {
+export default function BackButton() {
   const router = useRouter();
 
   return (
     <TransparentButton
-      title="back"
+      title="Back"
       color="black"
-      icon={<ArrowBackIosNewIcon />}
+      icon={<ArrowBackIcon fontSize="small" />}
       noBorder={true}
       onClick={() => router.back()}
     />

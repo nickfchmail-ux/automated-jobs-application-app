@@ -2,7 +2,6 @@
 
 import JobCard, { Job } from "@/components/JobCard";
 import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -42,7 +41,8 @@ function FilterBar({
       </span>
       <button
         onClick={() => onChange("All")}
-        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+        aria-pressed={active === "All"}
+        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
           active === "All"
             ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 border-transparent"
             : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500"
@@ -57,7 +57,8 @@ function FilterBar({
           <button
             key={opt}
             onClick={() => onChange(opt)}
-            className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+            aria-pressed={isActive}
+            className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
               isActive
                 ? custom
                   ? `${custom} border-transparent`
@@ -88,13 +89,17 @@ interface FitFiltersProps {
   emptyIcon?: React.ReactNode;
 }
 
-export default function FitFilters({ jobs, emptyMessage, emptyIcon }: FitFiltersProps) {
+export default function FitFilters({
+  jobs,
+  emptyMessage,
+  emptyIcon,
+}: FitFiltersProps) {
   const router = useRouter();
   const [sourceFilter, setSourceFilter] = useState("All");
   const [keyFilter, setKeyFilter] = useState("All");
   const [appliedFilter, setAppliedFilter] = useState("Not Applied");
   const [viewMode, setViewMode] = useState<"table" | "card">(() =>
-    typeof window !== "undefined" && window.innerWidth < 768 ? "card" : "table"
+    typeof window !== "undefined" && window.innerWidth < 768 ? "card" : "table",
   );
 
   const sorted = useMemo(
@@ -216,20 +221,42 @@ export default function FitFilters({ jobs, emptyMessage, emptyIcon }: FitFilters
         <div className="flex items-center gap-1 rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
           <button
             onClick={() => setViewMode("table")}
-            className={`p-1.5 rounded-md transition-colors ${viewMode === "table" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
+            aria-pressed={viewMode === "table"}
+            className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${viewMode === "table" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
             aria-label="Table view"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 6h16M4 10h16M4 14h16M4 18h16"
+              />
             </svg>
           </button>
           <button
             onClick={() => setViewMode("card")}
-            className={`p-1.5 rounded-md transition-colors ${viewMode === "card" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
+            aria-pressed={viewMode === "card"}
+            className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${viewMode === "card" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
             aria-label="Card view"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+              />
             </svg>
           </button>
         </div>
@@ -265,44 +292,70 @@ export default function FitFilters({ jobs, emptyMessage, emptyIcon }: FitFilters
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Title</th>
-                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Company</th>
-                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Location</th>
-                <th className="text-center px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Score</th>
-                <th className="text-center px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Applied</th>
-                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Applied On</th>
-                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">Posted</th>
+                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Title
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Company
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Location
+                </th>
+                <th className="text-center px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Score
+                </th>
+                <th className="text-center px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Applied
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Applied On
+                </th>
+                <th className="text-left px-4 py-3 font-semibold text-zinc-600 dark:text-zinc-400">
+                  Posted
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {filtered.map((job) => (
-                <tr key={job.id} onClick={() => router.push(`/jobs/${job.id}`)} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer">
+                <tr
+                  key={job.id}
+                  onClick={() => router.push(`/jobs/${job.id}`)}
+                  className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                >
                   <td className="px-4 py-3">
                     <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 line-clamp-1">
                       {job.title}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">{job.company}</td>
-                  <td className="px-4 py-3 text-zinc-500 dark:text-zinc-500 truncate max-w-50">{job.location}</td>
+                  <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                    {job.company}
+                  </td>
+                  <td className="px-4 py-3 text-zinc-500 dark:text-zinc-500 truncate max-w-50">
+                    {job.location}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     {job.fit_score !== null && (
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                        job.fit_score >= 65
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          : job.fit_score >= 45
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                            : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
-                      }`}>
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          job.fit_score >= 65
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                            : job.fit_score >= 45
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                              : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                        }`}
+                      >
                         {job.fit_score}
                       </span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      job.applied
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                        : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                    }`}>
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        job.applied
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                      }`}
+                    >
                       {job.applied ? "Yes" : "No"}
                     </span>
                   </td>

@@ -161,7 +161,7 @@ export default function ResumePanel({ userId, fileName, signedUrl }: Props) {
             : "Accepted formats: PDF, DOC, DOCX"}
         </p>
 
-        {/* Drop zone */}  
+        {/* Drop zone */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -172,10 +172,10 @@ export default function ResumePanel({ userId, fileName, signedUrl }: Props) {
           onClick={() => fileRef.current?.click()}
           className={`cursor-pointer rounded-xl border-2 border-dashed px-6 py-10 flex flex-col items-center gap-3 transition-colors ${
             isDragging
-              ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30"
+              ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30"
               : selectedFile
                 ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20"
-                : "border-zinc-300 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                : "border-zinc-300 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
           }`}
         >
           {selectedFile ? (
@@ -270,7 +270,7 @@ export default function ResumePanel({ userId, fileName, signedUrl }: Props) {
         <button
           onClick={handleUpload}
           disabled={!selectedFile || isPending}
-          className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 disabled:text-zinc-400 text-white font-medium text-sm px-4 py-3 transition-colors"
+          className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 disabled:text-zinc-400 text-white font-medium text-sm px-4 py-3 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
         >
           {isPending ? (
             <>

@@ -1,0 +1,9 @@
+# Keep the deployed function app lean — exclude tests, source and dev files.
+test/
+src/
+tsconfig.json
+tsconfig.test.json
+*.map
+.git/
+.vscode/
+node_modules/.cache

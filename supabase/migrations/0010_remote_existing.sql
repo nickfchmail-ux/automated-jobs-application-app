@@ -1,0 +1,1 @@
+-- Pre-existing remote migration 0010 (applied via backend repo). Kept as a local placeholder for CLI parity.

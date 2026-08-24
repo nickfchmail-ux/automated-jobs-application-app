@@ -1,0 +1,269 @@
+"use client";
+
+import { statsRunsAction } from "@/app/actions/scrape";
+import type { FunnelCounts, RunSummary } from "@/types/api";
+import { useEffect, useState } from "react";
+
+const BOARD_LABELS: Record<string, string> = {
+  jobsdb: "JobsDB",
+  ctgoodjobs: "CTgoodjobs",
+  offertoday: "OfferToday",
+  linkedin: "LinkedIn",
+};
+
+/** A run older than this that still looks "in progress" is treated as stalled. */
+const STALL_AFTER_MIN = 45;
+
+/** How long before "just now" becomes a real timestamp label. */
+const JUST_NOW_MIN = 1;
+
+/**
+ * Derive a plain-English state + tone from a run's funnel counters.
+ *
+ * The Express REST response doesn't carry a status column — only the funnel
+ * counters and `createdAt`. We infer the stage from the counters so the user
+ * always knows *what* is happening, not just that something is happening:
+ *
+ *   processing > 0        → "Loading job details…"
+ *   unique > analysed     → still finding / enriching jobs
+ *   analysed > 0          → "Matching against your resume…"
+ *   completed > 0         → done
+ *
+ * We also age-check: a run that still looks active but was created a while
+ * ago is labelled "Stalled" (amber) instead of a live blue spinner, so the
+ * UI never lies about a run being actively running.
+ */
+type RunState = {
+  label: string;
+  detail?: string;
+  tone: "neutral" | "active" | "success" | "error" | "stalled";
+};
+
+function deriveRunState(counts: FunnelCounts, createdAt: string): RunState {
+  const ageMin = ageInMinutes(createdAt);
+
+  if ((counts.failed || 0) > 0) {
+    return {
+      label: "Something went wrong",
+      detail: `${counts.failed} job${counts.failed === 1 ? "" : "s"} couldn't be saved`,
+      tone: "error",
+    };
+  }
+
+  // Actively loading details for at least one job.
+  if ((counts.processing || 0) > 0) {
+    return {
+      label: "Loading job details…",
+      detail: `${counts.processing} job${counts.processing === 1 ? "" : "s"} being read`,
+      tone: "active",
+    };
+  }
+
+  // AI matching has begun on some jobs.
+  if ((counts.analysed || 0) > 0) {
+    return {
+      label: "Matching your resume…",
+      detail: `${counts.analysed} job${counts.analysed === 1 ? "" : "s"} matched so far`,
+      tone: "active",
+    };
+  }
+
+  // Still discovering jobs (unique found but nothing processed yet).
+  if ((counts.unique || 0) > 0) {
+    return {
+      label: "Searching the job boards…",
+      detail: `${counts.unique} new job${counts.unique === 1 ? "" : "s"} found so far`,
+      tone: "active",
+    };
+  }
+
+  if ((counts.completed || 0) > 0) {
+    return { label: "Done ✓", tone: "success" };
+  }
+
+  return ageMin >= STALL_AFTER_MIN
+    ? { label: "Stalled", tone: "stalled" }
+    : { label: "In line…", tone: "neutral" };
+}
+
+function ageInMinutes(iso: string): number {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 0;
+  return Math.max(0, Math.round((Date.now() - then) / 60_000));
+}
+
+function timeAgo(iso: string): string {
+  const mins = ageInMinutes(iso);
+  if (mins < JUST_NOW_MIN) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
+}
+
+/**
+ * "My searches" — a quiet history of recent runs, fetched from
+ * `GET /stats/runs`. Each row is rendered in plain language with the run
+ * status and the funnel headline (found / great fits).
+ */
+export default function RunHistory() {
+  const [runs, setRuns] = useState<RunSummary[] | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      const result = await statsRunsAction();
+      if (!alive) return;
+      if (result.ok) {
+        setRuns(result.runs ?? []);
+      } else {
+        setError(true);
+      }
+    }
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) return null; // quiet — the live card handles search errors
+  if (!runs) return null; // still loading
+
+  if (runs.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-zinc-100 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+          My searches
+        </h2>
+      </div>
+      <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        {runs.slice(0, 6).map((run) => {
+          const state = deriveRunState(run.counts, run.createdAt);
+          const found = run.counts.scraped || 0;
+          const saved = run.counts.unique || 0;
+          const fits = run.counts.fit || 0;
+          return (
+            <li
+              key={run.runId}
+              className="px-5 py-3 flex items-center justify-between gap-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                  {run.keyword}
+                </p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 truncate">
+                  {run.boards.map((b) => BOARD_LABELS[b] ?? b).join(" · ")}
+                  {run.createdAt ? ` · ${timeAgo(run.createdAt)}` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {/* Headline: how many new/saved */}
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  {saved > 0 && (
+                    <>
+                      <strong className="font-semibold text-zinc-700 dark:text-zinc-300">
+                        {saved}
+                      </strong>{" "}
+                      new saved
+                      {found > saved && (
+                        <span className="text-zinc-400 dark:text-zinc-500">
+                          {" · "}
+                          {found} found
+                        </span>
+                      )}
+                      {fits > 0 && (
+                        <>
+                          {" · "}
+                          <strong className="font-semibold text-emerald-600 dark:text-emerald-400">
+                            {fits}
+                          </strong>{" "}
+                          fits
+                        </>
+                      )}
+                    </>
+                  )}
+                </span>
+
+                {/* Stage: what's happening right now (label + detail) */}
+                <span className="flex flex-col items-end gap-0.5">
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-medium ${
+                      state.tone === "error"
+                        ? "text-red-600 dark:text-red-400"
+                        : state.tone === "success"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : state.tone === "active"
+                            ? "text-blue-600 dark:text-blue-400"
+                            : state.tone === "stalled"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-zinc-500 dark:text-zinc-400"
+                    }`}
+                  >
+                    {state.tone === "active" && (
+                      <svg
+                        className="w-3 h-3 animate-spin motion-reduce:hidden"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    )}
+                    {state.tone === "stalled" && (
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    )}
+                    {state.label}
+                  </span>
+                  {state.detail && (
+                    <span
+                      className={`text-[11px] ${
+                        state.tone === "error"
+                          ? "text-red-500 dark:text-red-400"
+                          : state.tone === "stalled"
+                            ? "text-amber-500 dark:text-amber-400"
+                            : "text-zinc-400 dark:text-zinc-500"
+                      }`}
+                    >
+                      {state.detail}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
