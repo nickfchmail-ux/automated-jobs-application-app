@@ -377,6 +377,10 @@ test("evaluateRun: fires LLM calls concurrently (overlap, not serial)", async ()
 
   assert.equal(result.processedJobs, 6);
   // With 6 jobs and concurrency 20, ALL should be in-flight at once.
-  assert.equal(maxActive, 6, `expected 6 concurrent LLM calls, got ${maxActive}`);
+  assert.equal(
+    maxActive,
+    6,
+    `expected 6 concurrent LLM calls, got ${maxActive}`,
+  );
   assert.equal(llmCallsStarted.length, 6);
 });

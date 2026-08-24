@@ -155,6 +155,70 @@ export default function ResumeActions({
     }
   }
 
+  /**
+   * Download the resume as a PDF with careful pagination.
+   *
+   * The resume is stored as print-ready HTML (A4 @page + break-inside:avoid
+   * + orphan/widow control). We render it into a hidden same-origin iframe
+   * and trigger the browser's print flow, which preserves the page-break CSS
+   * perfectly — the user saves it as a PDF via the print dialog. This avoids
+   * heavy server-side PDF tooling and keeps the pagination exact.
+   */
+  async function downloadPdf() {
+    const htmlUrl = urls.pdf ?? urls.html;
+    if (!htmlUrl) return;
+    setError(null);
+    try {
+      const res = await fetch(htmlUrl, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+
+      // If the stored HTML is already a PDF (real pdf_url), just open it.
+      if (htmlUrl.endsWith(".pdf") || html.trimStart().startsWith("%PDF")) {
+        window.open(htmlUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument;
+      if (!doc) {
+        iframe.remove();
+        throw new Error("Could not create print view");
+      }
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      // Wait for the iframe document + any external resources to settle.
+      const finish = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } finally {
+          // Give the print dialog a moment before removing the frame.
+          setTimeout(() => iframe.remove(), 1000);
+        }
+      };
+      if (doc.readyState === "complete") finish();
+      else
+        doc.addEventListener("readystatechange", () => {
+          if (doc.readyState === "complete") finish();
+        });
+    } catch (e) {
+      console.error("[ResumeActions] downloadPdf failed:", e);
+      setError(
+        "Couldn't prepare the PDF. Please open 'View resume' and use your browser's print → Save as PDF.",
+      );
+    }
+  }
+
   if (isBuilding) {
     return (
       <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/40 px-4 py-3 flex items-center gap-3">
@@ -230,11 +294,10 @@ export default function ResumeActions({
               View resume
             </a>
           )}
-          {urls.pdf && (
-            <a
-              href={urls.pdf}
-              target="_blank"
-              rel="noopener noreferrer"
+          {(urls.pdf || urls.html) && (
+            <button
+              type="button"
+              onClick={downloadPdf}
               className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 transition-colors"
             >
               <svg
@@ -251,7 +314,7 @@ export default function ResumeActions({
                 />
               </svg>
               Download PDF
-            </a>
+            </button>
           )}
         </div>
       ) : (

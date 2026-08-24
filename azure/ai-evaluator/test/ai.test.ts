@@ -91,7 +91,7 @@ test("parseResumeDocument: salvages truncated JSON (unterminated string)", () =>
 });
 
 test("parseResumeDocument: salvages code-fenced truncated resume", () => {
-  const fenced = "```json\n{\"resumeHtml\": \"<html><body>Engineer</bod";
+  const fenced = '```json\n{"resumeHtml": "<html><body>Engineer</bod';
   const r = parseResumeDocument(fenced);
   assert.match(r.resumeHtml, /<html>/);
 });

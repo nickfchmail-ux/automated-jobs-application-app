@@ -10,7 +10,11 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (e) {
       lastErr = e;
       const msg = e instanceof Error ? e.message : String(e);
-      if (/timed? ?out|connection|ECONNRESET|network|socket|fetch failed/i.test(msg)) {
+      if (
+        /timed? ?out|connection|ECONNRESET|network|socket|fetch failed/i.test(
+          msg,
+        )
+      ) {
         if (attempt < delays.length) {
           await new Promise((r) => setTimeout(r, delays[attempt]));
           continue;

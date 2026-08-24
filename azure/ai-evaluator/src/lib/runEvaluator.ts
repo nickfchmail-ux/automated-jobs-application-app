@@ -3,6 +3,7 @@ import { evaluateSingleJobWithLLM, generateResumeWithLLM } from "./ai.js";
 import { buildResumePrompt, buildSingleJobPrompt } from "./prompts.js";
 import { fetchResumeText, sanitizeResume } from "./resume.js";
 import { storeGeneratedResume } from "./resumeDocuments.js";
+import { enhanceResumeForPrint } from "./resumePrint.js";
 import { notifyStateChange } from "./socket.js";
 import {
   setPipelineRunEvaluationStatus,
@@ -188,10 +189,13 @@ export async function evaluateRun(params: {
           const { resumeHtml } = await generateResumeWithLLM(
             buildResumePrompt(resumeTextWithContact, job),
           );
+          // Wrap the raw LLM HTML with print-ready CSS (A4 page breaks,
+          // break-inside: avoid, no orphan lines) so it PDFs cleanly.
+          const printReadyHtml = enhanceResumeForPrint(resumeHtml);
           const { resumeUrl } = await storeGeneratedResume({
             userId,
             jobId: job.id,
-            html: resumeHtml,
+            html: printReadyHtml,
           });
           patch.resume_status = "completed";
           patch.resume_url = resumeUrl;
