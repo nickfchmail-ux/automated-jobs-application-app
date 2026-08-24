@@ -2,6 +2,7 @@
 
 import TransparentButton from "@/components/TransparentButton";
 import { resumeStatusCopy } from "@/lib/funnel";
+import { buildResumeDocx } from "@/lib/resumeDocx";
 import type { ResumeStatus } from "@/types/api";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useEffect, useRef, useState } from "react";
@@ -219,6 +220,39 @@ export default function ResumeActions({
     }
   }
 
+  /**
+   * Download the resume as a professionally-formatted Word (.docx) file.
+   *
+   * Fetches the stored resume HTML, parses its structure (name, contact,
+   * section headings, bullets, paragraphs) and rebuilds it as a clean Word
+   * document with consistent typography and spacing — ready to open/edit in
+   * Word, Google Docs, etc. This is generated entirely client-side with the
+   * `docx` package (the same library used for cover letters).
+   */
+  async function downloadWord() {
+    const htmlUrl = urls.html;
+    if (!htmlUrl) return;
+    setError(null);
+    setRequesting(true);
+    try {
+      const res = await fetch(htmlUrl, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const html = await res.text();
+      const blob = await buildResumeDocx(html);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `resume-${company.replace(/\s+/g, "-").toLowerCase()}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("[ResumeActions] downloadWord failed:", e);
+      setError("Couldn't create the Word file. Please try again.");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
   if (isBuilding) {
     return (
       <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/40 px-4 py-3 flex items-center gap-3">
@@ -314,6 +348,29 @@ export default function ResumeActions({
                 />
               </svg>
               Download PDF
+            </button>
+          )}
+          {urls.html && (
+            <button
+              type="button"
+              onClick={downloadWord}
+              disabled={requesting}
+              className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              {requesting ? "Preparing…" : "Download Word"}
             </button>
           )}
         </div>
