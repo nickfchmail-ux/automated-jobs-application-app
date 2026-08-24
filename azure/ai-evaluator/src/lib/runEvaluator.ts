@@ -133,16 +133,27 @@ export async function evaluateRun(params: {
   // Push the "evaluating" state to the user's WebSocket room.
   await notifyStateChange(userId, pipelineRunId);
 
-  let processed = 0;
-  let failed = 0;
   // Track per-batch processed/failed so the final roll-up is accurate.
   const batchCounts = new Map(
     batches.map((b) => [b.keyword, { processed: 0, failed: 0 }]),
   );
 
-  // Evaluate EVERY job with its own LLM call, writing results as we go so a
-  // partial failure never loses the jobs already scored.
-  for (const job of jobs) {
+  /**
+   * Concurrent worker pool — fires the LLM calls for ALL jobs at (nearly)
+   * the same time, bounded by a concurrency limit so we don't hammer the
+   * model provider. Results are written back per-job as they complete, so
+   * progress streams live to the frontend.
+   *
+   * Each worker: evaluation LLM call (fit + cover letter) → if fit, resume
+   * LLM call + storage (concurrently) → write the job row → roll up batch.
+   */
+  const CONCURRENCY = Number(process.env["EVALUATION_CONCURRENCY"] || 20);
+  const workerCount = Math.max(1, Math.min(CONCURRENCY, jobs.length));
+  let nextIndex = 0;
+  let processed = 0;
+  let failed = 0;
+
+  async function processJob(job: JobForEvaluation): Promise<void> {
     const batch = batches.find((b) => b.jobs.some((j) => j.id === job.id));
     const runId = batch ? runIdByKeyword.get(batch.keyword) : undefined;
     const counts = batch ? batchCounts.get(batch.keyword) : undefined;
@@ -228,6 +239,17 @@ export async function evaluateRun(params: {
       await notifyStateChange(userId, pipelineRunId);
     }
   }
+
+  // Run a bounded number of workers concurrently; each worker pulls the next
+  // job from the shared index so all LLM calls start almost simultaneously.
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < jobs.length) {
+        const i = nextIndex++;
+        await processJob(jobs[i]);
+      }
+    }),
+  );
 
   // Final roll-up: mark every batch terminal, then set the overall status.
   for (const batch of batches) {

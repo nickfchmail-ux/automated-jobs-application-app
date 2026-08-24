@@ -334,3 +334,49 @@ test("evaluateRun: throws when no resume", async () => {
     /No resume found/,
   );
 });
+
+test("evaluateRun: fires LLM calls concurrently (overlap, not serial)", async () => {
+  // 6 jobs → with default concurrency (20) all 6 eval calls should overlap.
+  const jobs = Array.from({ length: 6 }, (_, i) => job(`job-${i}`, "react"));
+  const sb = fakeSupabase({ jobs });
+  installMocks(sb);
+
+  // Track in-flight eval calls; each resolves after a 30ms delay.
+  let active = 0;
+  let maxActive = 0;
+  const llmCallsStarted: string[] = [];
+  mockModule("../src/lib/ai.js", {
+    evaluateSingleJobWithLLM: async (msgs: { content?: string }[]) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      const jobId = extractJobId(msgs);
+      llmCallsStarted.push(jobId);
+      await new Promise((r) => setTimeout(r, 30));
+      active--;
+      return {
+        jobId,
+        fit: false,
+        fit_score: 10,
+        fit_reasons: [],
+        not_fit_reasons: [],
+        cover_letter: null,
+        expected_salary: null,
+      };
+    },
+    generateResumeWithLLM: async () => ({ resumeHtml: "<html/>" }),
+    parseSingleJobResult: () => ({}),
+    parseResumeDocument: () => ({ resumeHtml: "" }),
+  });
+
+  const evaluateRun = loadOrchestrator();
+  const result = await evaluateRun({
+    pipelineRunId: "run-1",
+    userId: "user-1",
+    log: () => {},
+  });
+
+  assert.equal(result.processedJobs, 6);
+  // With 6 jobs and concurrency 20, ALL should be in-flight at once.
+  assert.equal(maxActive, 6, `expected 6 concurrent LLM calls, got ${maxActive}`);
+  assert.equal(llmCallsStarted.length, 6);
+});

@@ -81,3 +81,17 @@ test("parseResumeDocument: throws when resumeHtml missing", () => {
     /missing resumeHtml/,
   );
 });
+
+test("parseResumeDocument: salvages truncated JSON (unterminated string)", () => {
+  // Simulate the model output being cut off mid-HTML — invalid JSON.
+  const truncated = `{"resumeHtml": "<html><body><h1>Jane Doe</h1><p>Experienced `;
+  const r = parseResumeDocument(truncated);
+  assert.match(r.resumeHtml, /<html>/);
+  assert.match(r.resumeHtml, /Jane Doe/);
+});
+
+test("parseResumeDocument: salvages code-fenced truncated resume", () => {
+  const fenced = "```json\n{\"resumeHtml\": \"<html><body>Engineer</bod";
+  const r = parseResumeDocument(fenced);
+  assert.match(r.resumeHtml, /<html>/);
+});

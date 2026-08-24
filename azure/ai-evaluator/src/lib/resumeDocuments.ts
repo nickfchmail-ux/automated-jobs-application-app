@@ -1,5 +1,27 @@
 import { getSupabase } from "./supabase.js";
 
+/** Retry a transient storage/DB failure (timeout, connection reset). */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [500, 1500, 4000];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/timed? ?out|connection|ECONNRESET|network|socket|fetch failed/i.test(msg)) {
+        if (attempt < delays.length) {
+          await new Promise((r) => setTimeout(r, delays[attempt]));
+          continue;
+        }
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Persist a generated tailored resume for a fit job.
  *
@@ -26,38 +48,42 @@ export async function storeGeneratedResume(params: {
   const baseName = `${userId}-${jobId}`;
   const fileName = `${baseName}.html`;
 
-  // Idempotent — a regenerated resume overwrites the previous one.
-  const { error: uploadErr } = await sb.storage
-    .from(GENERATED_BUCKET)
-    .upload(fileName, Buffer.from(html, "utf8"), {
-      contentType: "text/html; charset=utf-8",
-      upsert: true,
-    });
-  if (uploadErr) {
-    throw new Error(`Failed to upload generated resume: ${uploadErr.message}`);
-  }
+  return withRetry(async () => {
+    // Idempotent — a regenerated resume overwrites the previous one.
+    const { error: uploadErr } = await sb.storage
+      .from(GENERATED_BUCKET)
+      .upload(fileName, Buffer.from(html, "utf8"), {
+        contentType: "text/html; charset=utf-8",
+        upsert: true,
+      });
+    if (uploadErr) {
+      throw new Error(
+        `Failed to upload generated resume: ${uploadErr.message}`,
+      );
+    }
 
-  // Public URL so the frontend can open the resume directly.
-  const { data } = sb.storage.from(GENERATED_BUCKET).getPublicUrl(fileName);
-  const resumeUrl = data.publicUrl;
+    // Public URL so the frontend can open the resume directly.
+    const { data } = sb.storage.from(GENERATED_BUCKET).getPublicUrl(fileName);
+    const resumeUrl = data.publicUrl;
 
-  // Tracking row so the frontend can retrieve it per job (Realtime).
-  const { error: upsertErr } = await sb.from("generated_resumes").upsert(
-    {
-      user_id: userId,
-      job_id: jobId,
-      status: "completed",
-      resume_url: resumeUrl,
-      file_name: fileName,
-      completed_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,job_id" },
-  );
-  if (upsertErr) {
-    throw new Error(
-      `Failed to save generated_resumes row: ${upsertErr.message}`,
+    // Tracking row so the frontend can retrieve it per job (Realtime).
+    const { error: upsertErr } = await sb.from("generated_resumes").upsert(
+      {
+        user_id: userId,
+        job_id: jobId,
+        status: "completed",
+        resume_url: resumeUrl,
+        file_name: fileName,
+        completed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,job_id" },
     );
-  }
+    if (upsertErr) {
+      throw new Error(
+        `Failed to save generated_resumes row: ${upsertErr.message}`,
+      );
+    }
 
-  return { resumeUrl, fileName };
+    return { resumeUrl, fileName };
+  });
 }

@@ -17,6 +17,46 @@ export interface ChatCompletionResponse {
   }[];
 }
 
+const RETRY_DELAYS_MS = [500, 1500, 4000];
+const MAX_RETRIES = RETRY_DELAYS_MS.length;
+
+/**
+ * Retry a transient LLM failure (empty response, timeout, 5xx, rate-limit)
+ * with backoff. Permanent failures (bad request, auth) fail fast.
+ */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const status =
+        e && typeof e === "object" && "status" in e
+          ? (e as { status?: number }).status
+          : undefined;
+      const msg = e instanceof Error ? e.message : String(e);
+      // Permanent → don't retry.
+      if (status && status >= 400 && status < 500 && status !== 429) {
+        throw e;
+      }
+      // Empty-response / timeout / 5xx / rate-limit → retry with backoff.
+      if (
+        /empty response|timed? ?out|abort|5\d\d|429|ECONNRESET|fetch failed/i.test(
+          msg,
+        )
+      ) {
+        if (attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+          continue;
+        }
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Parse the model's reply for a SINGLE job evaluation.
  *
@@ -184,13 +224,15 @@ export async function chatCompletion(
 export async function evaluateSingleJobWithLLM(
   messages: ChatMessage[],
 ): Promise<JobEvaluationResult> {
-  const completion = await chatCompletion(messages, {
-    temperature: 0.2,
-    maxTokens: 2000,
+  return withRetry(async () => {
+    const completion = await chatCompletion(messages, {
+      temperature: 0.2,
+      maxTokens: 2000,
+    });
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) throw new Error("LLM returned an empty response");
+    return parseSingleJobResult(content);
   });
-  const content = completion.choices?.[0]?.message?.content;
-  if (!content) throw new Error("LLM returned an empty response");
-  return parseSingleJobResult(content);
 }
 
 /** Generated tailored-resume payload returned by the LLM for a fit job. */
@@ -198,35 +240,54 @@ export interface ResumeDocumentResult {
   resumeHtml: string;
 }
 
-/** Parse the model's reply for a single job's tailored resume. */
+/**
+ * Parse the model's reply for a single job's tailored resume.
+ *
+ * The resume HTML is a large document and can occasionally be TRUNCATED by
+ * the model's output-token limit, producing invalid JSON ("Unterminated
+ * string"). To be resilient we extract the `resumeHtml` field value with a
+ * regex from the raw reply, so a truncated trailing string still yields a
+ * usable resume. Falls back to strict JSON.parse when the reply is whole.
+ */
 export function parseResumeDocument(raw: string): ResumeDocumentResult {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const jsonText = (fenced ? fenced[1] : raw).trim();
 
-  let parsed: unknown;
+  // Try strict parse first (fast path when the reply is complete).
   try {
-    parsed = JSON.parse(jsonText);
+    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    const html = String(parsed?.resumeHtml ?? parsed?.resume_html ?? "");
+    if (html) return { resumeHtml: html };
   } catch {
-    const start = jsonText.indexOf("{");
-    const end = jsonText.lastIndexOf("}");
-    if (start === -1 || end === -1) {
-      throw new Error("LLM returned no parseable JSON for the resume");
-    }
-    parsed = JSON.parse(jsonText.slice(start, end + 1));
+    /* fall through to salvage */
   }
 
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("LLM resume result is not an object");
+  // Salvage: grab the "resumeHtml": "..." value even if JSON is truncated.
+  // Handles escaped quotes inside the HTML by scanning for the closing quote.
+  const m = jsonText.match(
+    /["']resumeHtml["']\s*:\s*["']([\s\S]*?)["']\s*(?:,|\})?$/,
+  );
+  if (m && m[1]) {
+    // Unescape common JSON escapes from the captured HTML.
+    const html = m[1]
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+    if (html) return { resumeHtml: html };
   }
-  const r = parsed as Record<string, unknown>;
-  const resumeHtml =
-    typeof r.resumeHtml === "string" || typeof r.resume_html === "string"
-      ? String(r.resumeHtml ?? r.resume_html)
-      : "";
-  if (!resumeHtml) {
-    throw new Error("LLM resume result missing resumeHtml");
+
+  // Last resort: extract everything between the first <html and the end.
+  const start = jsonText.indexOf("<html");
+  if (start !== -1) {
+    const html = jsonText
+      .slice(start)
+      .replace(/\\n/g, "\n")
+      .replace(/\\"/g, '"');
+    if (html) return { resumeHtml: html };
   }
-  return { resumeHtml };
+
+  throw new Error("LLM resume result missing resumeHtml");
 }
 
 /**
@@ -239,11 +300,14 @@ export function parseResumeDocument(raw: string): ResumeDocumentResult {
 export async function generateResumeWithLLM(
   messages: ChatMessage[],
 ): Promise<ResumeDocumentResult> {
-  const completion = await chatCompletion(messages, {
-    temperature: 0.4,
-    maxTokens: 5000,
+  return withRetry(async () => {
+    const completion = await chatCompletion(messages, {
+      temperature: 0.4,
+      // Tailored resume HTML is a full document — needs a large output budget.
+      maxTokens: 12_000,
+    });
+    const content = completion.choices?.[0]?.message?.content;
+    if (!content) throw new Error("LLM returned an empty response");
+    return parseResumeDocument(content);
   });
-  const content = completion.choices?.[0]?.message?.content;
-  if (!content) throw new Error("LLM returned an empty response");
-  return parseResumeDocument(content);
 }
