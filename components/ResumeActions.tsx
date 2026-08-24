@@ -166,19 +166,18 @@ export default function ResumeActions({
    * heavy server-side PDF tooling and keeps the pagination exact.
    */
   async function downloadPdf() {
-    const htmlUrl = urls.pdf ?? urls.html;
-    if (!htmlUrl) return;
+    // If a real PDF URL exists, open it directly.
+    if (urls.pdf) {
+      window.open(urls.pdf, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (!urls.html) return;
     setError(null);
     try {
-      const res = await fetch(htmlUrl, { cache: "no-store" });
+      // Fetch the print-optimized HTML via the API route (correct text/html).
+      const res = await fetch(`/api/resume/${jobId}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
-
-      // If the stored HTML is already a PDF (real pdf_url), just open it.
-      if (htmlUrl.endsWith(".pdf") || html.trimStart().startsWith("%PDF")) {
-        window.open(htmlUrl, "_blank", "noopener,noreferrer");
-        return;
-      }
 
       const iframe = document.createElement("iframe");
       iframe.style.position = "fixed";
@@ -230,12 +229,11 @@ export default function ResumeActions({
    * `docx` package (the same library used for cover letters).
    */
   async function downloadWord() {
-    const htmlUrl = urls.html;
-    if (!htmlUrl) return;
+    if (!urls.html) return;
     setError(null);
     setRequesting(true);
     try {
-      const res = await fetch(htmlUrl, { cache: "no-store" });
+      const res = await fetch(`/api/resume/${jobId}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const html = await res.text();
       const blob = await buildResumeDocx(html);
@@ -302,7 +300,7 @@ export default function ResumeActions({
         <div className="flex flex-wrap gap-2">
           {urls.html && (
             <a
-              href={urls.html}
+              href={`/api/resume/${jobId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
