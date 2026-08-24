@@ -1,6 +1,6 @@
 import { DefaultAzureCredential } from "@azure/identity";
 import { ServiceBusClient, ServiceBusSender } from "@azure/service-bus";
-import type { EvaluateRequest } from "../shared/types.js";
+import type { EvaluateJobMessage, EvaluateRequest } from "../shared/types.js";
 
 /**
  * Service Bus sender for the EVALUATOR's OWN queue.
@@ -63,4 +63,31 @@ export async function enqueueEvaluation(
     ),
   ]);
   return messageId;
+}
+
+/**
+ * Enqueue ONE message per job post — the true fan-out. Azure scales the queue
+ * trigger across instances, so 20 posts → up to 20 concurrent worker
+ * invocations (bounded by `maxConcurrentCalls`). Each message carries the
+ * job id + its evaluation_runs batch id so the worker processes exactly one
+ * post and rolls up progress into the right batch.
+ */
+export async function enqueueEvaluationJobs(
+  messages: EvaluateJobMessage[],
+): Promise<void> {
+  const sender = getSender();
+  await Promise.race([
+    sender.sendMessages(
+      messages.map((m) => ({
+        body: m,
+        messageId: `eval-job:${m.jobId}:${Date.now()}:${Math.random()
+          .toString(36)
+          .slice(2)}`,
+        contentType: "application/json",
+      })),
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Service Bus send timed out")), 20_000),
+    ),
+  ]);
 }

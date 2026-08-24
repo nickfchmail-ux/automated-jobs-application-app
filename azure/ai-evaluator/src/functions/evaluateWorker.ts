@@ -1,63 +1,101 @@
 import { InvocationContext, ServiceBusQueueHandler } from "@azure/functions";
-import { evaluateRun } from "../lib/runEvaluator.js";
+import { evaluateSingleJob } from "../lib/evaluateJob.js";
 import { notifyStateChange } from "../lib/socket.js";
+import {
+  incrementEvaluationRun,
+  setPipelineRunEvaluationStatus,
+} from "../lib/status.js";
 import { getSupabase } from "../lib/supabase.js";
-import type { EvaluateRequest } from "../shared/types.js";
+import type { EvaluateJobMessage } from "../shared/types.js";
 
 /**
- * Service Bus queue trigger — the evaluator's OWN queue.
+ * Service Bus queue trigger — ONE invocation per job post (fan-out).
  *
- * ONE queue, ONE worker: `POST /api/evaluate` enqueues a message and returns
- * 202; this trigger consumes it and runs the ENTIRE evaluation in-process
- * (scoring + cover letter + tailored resume for fit jobs). There is no
- * function-calling-function chain and no second queue — this replaces the old
- * `evaluateBatch → generateJobDocuments` Service Bus chain.
+ * `POST /api/evaluate` enqueues one message per unevaluated job; Azure scales
+ * this trigger across instances, so 20 posts → up to 20 concurrent workers,
+ * each scoring exactly one post. This replaces the old single-worker loop.
  *
- * Durability: if this worker crashes mid-run, Service Bus retries the message
- * (the orchestrator is idempotent: it only scores jobs with `fit_score IS
- * NULL`, and `evaluation_runs` rows are keyed by run + keyword).
+ * After scoring, the worker ATOMICALLY increments its batch's progress and,
+ * when it is the LAST job in the batch, finalizes the run(s).
  */
-export const evaluateWorker: ServiceBusQueueHandler<EvaluateRequest> = async (
-  body: EvaluateRequest,
+export const evaluateWorker: ServiceBusQueueHandler<
+  EvaluateJobMessage
+> = async (
+  msg: EvaluateJobMessage,
   context: InvocationContext,
 ): Promise<void> => {
-  const { runId, user_id: userId, search_key: searchKey } = body ?? {};
-  if (!runId || !userId) {
-    context.error(`evaluateWorker: missing runId/user_id in message`);
+  const { jobId, userId, runId, evaluationRunId } = msg ?? {};
+  if (!jobId || !userId || !runId || !evaluationRunId) {
+    context.error(`evaluateWorker: malformed message (missing ids)`);
     return;
   }
 
-  context.log(`evaluateWorker start: run=${runId} user=${userId}`);
+  context.log(
+    `evaluateWorker start: job=${jobId} run=${runId} batch=${evaluationRunId}`,
+  );
   const sb = getSupabase();
 
+  let processed = 0;
+  let failed = 0;
+  let lastError: string | null = null;
+
   try {
-    await evaluateRun({
-      pipelineRunId: runId,
-      userId,
-      searchKey: searchKey?.trim() || undefined,
-      log: (msg) => context.log(`[evaluateRun] ${msg}`),
-    });
-    context.log(`evaluateWorker done: run=${runId}`);
+    await evaluateSingleJob(msg, (m) => context.log(`[job] ${m}`));
+    processed = 1;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unexpected error";
-    context.error(`evaluateWorker failed: run=${runId} ${msg}`);
-    // Mark the run failed so the frontend can show it, then swallow the
-    // error so Service Bus doesn't retry forever on a persistent failure
-    // (e.g. bad LLM key / no resume).
-    try {
-      await sb
-        .from("pipeline_runs")
+    failed = 1;
+    lastError = e instanceof Error ? e.message : "Job evaluation failed";
+    context.error(`evaluateWorker failed: job=${jobId} ${lastError}`);
+  }
+
+  // Atomically roll up this job's outcome into its batch; the RPC returns
+  // whether the batch is now complete. The LAST worker finalizes.
+  try {
+    const res = await incrementEvaluationRun({
+      evaluationRunId,
+      processed,
+      failed,
+      lastError,
+    });
+    context.log(
+      `batch ${evaluationRunId}: processed=${res.processed}/${res.total} failed=${res.failed} done=${res.done}`,
+    );
+    await notifyStateChange(userId, runId);
+
+    if (res.done) {
+      // Mark the batch terminal (completed/failed), then the run(s).
+      const { error: batchErr } = await sb
+        .from("evaluation_runs")
         .update({
-          evaluation_status: "failed",
-          last_error: msg.slice(0, 500),
+          status: res.processed > 0 ? "completed" : "failed",
+          last_error:
+            res.failed > 0
+              ? `${res.failed} job(s) could not be matched.`
+              : null,
+          completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", runId)
-        .eq("user_id", userId);
-    } catch {
-      /* ignore final-write failure */
+        .eq("id", evaluationRunId);
+      if (batchErr) {
+        context.error(`finalize batch failed: ${batchErr.message}`);
+      }
+
+      const overall = res.processed > 0 ? "completed" : "failed";
+      const finalErr =
+        res.failed > 0 ? `${res.failed} job(s) could not be matched.` : null;
+      await setPipelineRunEvaluationStatus(
+        runId,
+        userId,
+        overall,
+        finalErr,
+      ).catch((e) =>
+        context.error(`finalize run ${runId} failed: ${e.message}`),
+      );
+      await notifyStateChange(userId, runId);
     }
-    // Push the failure state to the user's WebSocket room (best-effort).
-    await notifyStateChange(userId, runId);
+  } catch (e) {
+    context.error(
+      `evaluateWorker rollup failed: job=${jobId} ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 };

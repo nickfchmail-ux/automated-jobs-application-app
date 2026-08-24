@@ -14,6 +14,7 @@ const requireCache = (Module as any)._cache as Record<string, unknown>;
 const state = {
   runStatus: "completed" as string | null,
   evalStatus: "none" as string | null,
+  searchKey: "react" as string | null,
   enqueued: [] as unknown[],
   jobs: [] as unknown[],
   jobUpdates: [] as unknown[],
@@ -24,6 +25,7 @@ const state = {
 
 function makeSupabase() {
   function chain(result: () => unknown) {
+    let single = false;
     const b: Record<string, unknown> = {
       select: () => b,
       eq: () => b,
@@ -31,7 +33,10 @@ function makeSupabase() {
       is: () => b,
       limit: () => b,
       order: () => b,
-      maybeSingle: () => b,
+      maybeSingle: () => {
+        single = true;
+        return b;
+      },
       update: (p: unknown) => {
         state.pipelineUpdates.push(p);
         return b;
@@ -52,7 +57,16 @@ function makeSupabase() {
         };
       },
       delete: () => b,
-      then: (resolve: (v: unknown) => void) => resolve(result()),
+      then: (resolve: (v: unknown) => void) => {
+        const raw = result();
+        const data = (raw as { data?: unknown })?.data ?? raw;
+        // For a maybeSingle query on a list-shaped result, return the first.
+        if (single && Array.isArray(data)) {
+          resolve({ data: data[0] ?? null, error: null });
+        } else {
+          resolve(raw);
+        }
+      },
     };
     return b;
   }
@@ -65,17 +79,34 @@ function makeSupabase() {
             id: "run-1",
             status: state.runStatus,
             evaluation_status: state.evalStatus,
+            search_key: state.searchKey,
           },
           error: null,
         }));
       }
       if (table === "jobs") {
+        // The trigger lists all jobs; the worker loads one via maybeSingle
+        // (the `then` handler returns the first when `single` is set).
         return chain(() => ({ data: state.jobs, error: null }));
       }
       if (table === "evaluation_runs") {
         return chain(() => ({ error: null }));
       }
       return chain(() => ({ error: null }));
+    },
+    rpc: async (name: string) => {
+      if (name === "increment_evaluation_run") {
+        return {
+          data: {
+            total: state.jobs.length,
+            processed: state.jobs.length,
+            failed: 0,
+            done: true,
+          },
+          error: null,
+        };
+      }
+      return { data: null, error: new Error(`unknown rpc ${name}`) };
     },
     storage: {
       from: () => ({
@@ -105,6 +136,9 @@ function installMocks(sb: ReturnType<typeof makeSupabase>) {
     enqueueEvaluation: async (body: unknown) => {
       state.enqueued.push(body);
       return "msg-1";
+    },
+    enqueueEvaluationJobs: async (msgs: unknown[]) => {
+      state.enqueued.push(...msgs);
     },
   });
   mock("../src/lib/ai.js", {
@@ -150,10 +184,14 @@ function fresh(spec: string) {
   return require(p);
 }
 
-test("e2e: HTTP evaluate → enqueues → returns 202 (does not run work in HTTP handler)", async () => {
+test("e2e: HTTP evaluate → enqueues one message per job → returns 202", async () => {
   state.runStatus = "completed";
   state.evalStatus = "none";
   state.enqueued = [];
+  state.jobs = [
+    { id: "job-1", search_key: "react", fit_score: null, status: "completed" },
+    { id: "job-2", search_key: "react", fit_score: null, status: "completed" },
+  ];
   const sb = makeSupabase();
   installMocks(sb);
 
@@ -170,14 +208,17 @@ test("e2e: HTTP evaluate → enqueues → returns 202 (does not run work in HTTP
 
   assert.equal(res.status, 202);
   assert.equal((res.jsonBody as { status: string }).status, "queued");
-  assert.equal(state.enqueued.length, 1, "exactly one message enqueued");
-  assert.deepEqual((state.enqueued[0] as { runId: string }).runId, "run-1");
-  // The HTTP handler must NOT have run the orchestrator (no eval runs inserted yet).
-  assert.equal(state.evalRunsInserted.length, 0);
+  assert.equal(state.enqueued.length, 2, "one message enqueued per job");
+  assert.equal(
+    (state.enqueued[0] as { jobId: string }).jobId,
+    "job-1",
+    "fan-out message carries the job id",
+  );
 });
 
-test("e2e: HTTP rejects when run is not completed", async () => {
+test("e2e: HTTP rejects when run is not completed (run-scoped, no key)", async () => {
   state.runStatus = "scraping";
+  state.searchKey = null;
   state.enqueued = [];
   const sb = makeSupabase();
   installMocks(sb);
@@ -188,9 +229,10 @@ test("e2e: HTTP rejects when run is not completed", async () => {
   assert.equal(res.status, 409);
   assert.equal(state.enqueued.length, 0, "nothing enqueued while scraping");
   state.runStatus = "completed";
+  state.searchKey = "react";
 });
 
-test("e2e: queue worker runs the orchestrator end-to-end (writes fit + resume + status)", async () => {
+test("e2e: queue worker scores one job and finalizes the batch", async () => {
   state.jobs = [
     {
       id: "job-1",
@@ -237,7 +279,15 @@ test("e2e: queue worker runs the orchestrator end-to-end (writes fit + resume + 
 
   const { evaluateWorker } = fresh("../src/functions/evaluateWorker.js");
   await evaluateWorker(
-    { runId: "run-1", user_id: "user-1", search_key: "react" } as never,
+    {
+      jobId: "job-1",
+      userId: "user-1",
+      runId: "run-1",
+      evaluationRunId: "eval-0",
+      keyword: "react",
+      resumeText: "# Jane\n- React",
+      resumeTextWithContact: "# Jane\njane@x.com\n- React",
+    } as never,
     { log: () => {}, error: () => {} } as never,
   );
 
@@ -250,5 +300,5 @@ test("e2e: queue worker runs the orchestrator end-to-end (writes fit + resume + 
   assert.equal(up.fit, true);
   assert.equal(up.cover_letter, "Dear team");
   assert.equal(up.resume_status, "completed");
-  assert.ok(state.notifyCalls >= 3, "socket notified at start/progress/end");
+  assert.ok(state.notifyCalls >= 1, "socket notified on progress");
 });

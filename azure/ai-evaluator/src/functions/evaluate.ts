@@ -4,18 +4,24 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { enqueueEvaluation } from "../lib/serviceBus.js";
+import { fetchResumeText, sanitizeResume } from "../lib/resume.js";
+import { enqueueEvaluationJobs } from "../lib/serviceBus.js";
 import { getSupabase } from "../lib/supabase.js";
-import type { EvaluateRequest, EvaluateResponse } from "../shared/types.js";
+import type {
+  EvaluateJobMessage,
+  EvaluateRequest,
+  EvaluateResponse,
+  JobForEvaluation,
+} from "../shared/types.js";
 
 /**
  * POST /api/evaluate
  *
- * The single entry point for AI evaluation. Validates the run, enqueues ONE
- * message to the evaluator's OWN Service Bus queue, and returns **202
- * Accepted** immediately. The `evaluateWorker` queue trigger (this same app)
- * consumes it and runs the ENTIRE evaluation in-process — no function calling
- * another function, no fire-and-forget that can be killed after the response.
+ * The single entry point for AI evaluation. Loads the unevaluated jobs,
+ * creates one `evaluation_runs` batch row per keyword, fetches the resume
+ * ONCE, and enqueues **ONE Service Bus message PER JOB POST** — a true
+ * fan-out. Azure scales the `evaluateWorker` queue trigger across instances,
+ * so 20 posts → up to 20 concurrent workers, each scoring exactly one post.
  *
  * Body: { runId, user_id, search_key? }
  */
@@ -96,8 +102,50 @@ export const evaluate: HttpHandler = async (
       return json({ error: "This run is already being matched." }, 409);
     }
 
-    // 4. Mark queued up-front so a second click is rejected, then enqueue
-    //    ONE durable message to the evaluator's own queue.
+    // 4. Load the unevaluated jobs to fan out. When a search key is given,
+    //    this spans ALL runs (account-wide); otherwise it's scoped to runId.
+    const normalizedKey = searchKey?.trim().toLowerCase().replace(/\s+/g, "_");
+    let jobQuery = sb
+      .from("jobs")
+      .select("*")
+      .eq("user_id", userId)
+      .in("status", ["completed", "analysed"])
+      .is("fit_score", null)
+      .limit(500);
+    if (normalizedKey) {
+      jobQuery = jobQuery.eq("search_key", normalizedKey);
+    } else {
+      jobQuery = jobQuery.eq("pipeline_run_id", runId);
+    }
+    const { data: jobRows, error: jobsErr } = await jobQuery;
+    if (jobsErr) {
+      return json(
+        { error: jobsErr.message, detail: "Failed to load jobs" },
+        500,
+      );
+    }
+    const jobs = (jobRows ?? []) as unknown as JobForEvaluation[];
+    if (jobs.length === 0) {
+      return json({ error: "No saved jobs found for this run yet." }, 404);
+    }
+
+    // 5. Fetch the resume ONCE (sanitized both ways) and put it on every
+    //    message so workers don't re-download it from storage.
+    let resumeText: string;
+    let resumeTextWithContact: string;
+    try {
+      const rawResume = await fetchResumeText(userId);
+      resumeText = sanitizeResume(rawResume, { includeContact: false });
+      resumeTextWithContact = sanitizeResume(rawResume, {
+        includeContact: true,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Resume unavailable";
+      return json({ error: msg }, 400);
+    }
+
+    // 6. Mark queued up-front so a second click is rejected, then create one
+    //    evaluation_runs batch row per keyword and enqueue ONE message per job.
     await sb
       .from("pipeline_runs")
       .update({
@@ -107,12 +155,71 @@ export const evaluate: HttpHandler = async (
       .eq("id", runId)
       .eq("user_id", userId);
 
-    await enqueueEvaluation({ runId, user_id: userId, search_key: searchKey });
+    const now = new Date().toISOString();
+    const batches = groupJobs(jobs);
+    await sb
+      .from("evaluation_runs")
+      .delete()
+      .eq("pipeline_run_id", runId)
+      .eq("user_id", userId)
+      .then(({ error }) => {
+        if (error) {
+          throw new Error(
+            `Failed to clear old evaluation runs: ${error.message}`,
+          );
+        }
+      });
+
+    const { data: inserted, error: insertErr } = await sb
+      .from("evaluation_runs")
+      .insert(
+        batches.map((b) => ({
+          pipeline_run_id: runId,
+          user_id: userId,
+          keyword: b.keyword,
+          status: "queued",
+          total_jobs: b.jobs.length,
+          processed_jobs: 0,
+          failed_jobs: 0,
+          last_error: null,
+          created_at: now,
+          updated_at: now,
+        })),
+      )
+      .select("id, keyword");
+    if (insertErr) {
+      throw new Error(`Failed to create evaluation runs: ${insertErr.message}`);
+    }
+    const runIdByKeyword = new Map(
+      (inserted ?? []).map((r) => [r.keyword, r.id] as [string, string]),
+    );
+
+    const messages: EvaluateJobMessage[] = jobs.map((job) => {
+      const keyword = (job.search_key ?? "general").trim().toLowerCase();
+      const evaluationRunId = runIdByKeyword.get(keyword);
+      if (!evaluationRunId) {
+        throw new Error(`No evaluation run for keyword "${keyword}"`);
+      }
+      return {
+        jobId: job.id,
+        userId,
+        runId,
+        evaluationRunId,
+        keyword,
+        resumeText,
+        resumeTextWithContact,
+      };
+    });
+
+    await enqueueEvaluationJobs(messages);
 
     const response: EvaluateResponse = {
       runId,
-      keywordBatches: [],
-      totalJobs: 0,
+      keywordBatches: batches.map((b) => ({
+        keyword: b.keyword,
+        jobCount: b.jobs.length,
+      })),
+      totalJobs: jobs.length,
       status: "queued",
       statusUrl: `/api/evaluate/${runId}`,
     };
@@ -123,6 +230,23 @@ export const evaluate: HttpHandler = async (
     return json({ error: msg }, 500);
   }
 };
+
+/** Group jobs by search_key (keyword); jobs without one fall into "general". */
+function groupJobs(jobs: JobForEvaluation[]): {
+  keyword: string;
+  jobs: JobForEvaluation[];
+}[] {
+  const buckets = new Map<string, JobForEvaluation[]>();
+  for (const job of jobs) {
+    const keyword = (job.search_key ?? "general").trim().toLowerCase();
+    if (!buckets.has(keyword)) buckets.set(keyword, []);
+    buckets.get(keyword)!.push(job);
+  }
+  return [...buckets.entries()].map(([keyword, keywordJobs]) => ({
+    keyword,
+    jobs: keywordJobs,
+  }));
+}
 
 function json(body: unknown, status: number): HttpResponseInit {
   return {

@@ -79,6 +79,24 @@ export interface EvaluateRequest {
   search_key?: string;
 }
 
+/**
+ * ONE Service Bus message per job post — the fan-out unit. The `evaluate`
+ * trigger enqueues one of these per unevaluated job; each `evaluateWorker`
+ * invocation (which Azure scales across instances) processes exactly one.
+ */
+export interface EvaluateJobMessage {
+  jobId: string;
+  userId: string;
+  runId: string;
+  /** The `evaluation_runs.id` row this job rolls up into (per-keyword batch). */
+  evaluationRunId: string;
+  keyword: string;
+  /** Contact-stripped resume text (grounds the evaluation LLM call). */
+  resumeText: string;
+  /** Contact-included resume text (grounds the tailored resume). */
+  resumeTextWithContact: string;
+}
+
 /** Response from the evaluate trigger. */
 export interface EvaluateResponse {
   runId: string;
