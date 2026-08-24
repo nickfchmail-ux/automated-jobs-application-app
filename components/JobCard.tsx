@@ -110,15 +110,16 @@ function ScoreBadge({ score }: { score: number | null }) {
   if (score === null) return null;
   const color =
     score >= 65
-      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+      ? "bg-[var(--good-soft)] text-[var(--good)] border-[color-mix(in_srgb,var(--good)_20%,transparent)]"
       : score >= 45
-        ? "bg-amber-100 text-amber-800 border-amber-200"
-        : "bg-rose-100 text-rose-800 border-rose-200";
+        ? "bg-[var(--warn-soft)] text-[var(--warn)] border-[color-mix(in_srgb,var(--warn)_20%,transparent)]"
+        : "bg-[var(--bad-soft)] text-[var(--bad)] border-[color-mix(in_srgb,var(--bad)_20%,transparent)]";
   return (
     <span
-      className={`text-xs font-semibold px-2.5 py-1 rounded-full border tabular-nums ${color}`}
+      className={`font-data text-xs font-semibold px-2.5 py-1 rounded-full border tabular-nums ${color}`}
     >
-      {score} / 100
+      {score}
+      <span className="opacity-60">/100</span>
     </span>
   );
 }
@@ -126,7 +127,7 @@ function ScoreBadge({ score }: { score: number | null }) {
 /** Neutral treatment for jobs that haven't been AI-scored yet — never imply a score. */
 function AwaitingEvaluationBadge() {
   return (
-    <span className="text-xs font-medium px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+    <span className="text-xs font-medium px-2.5 py-1 rounded-full border border-[var(--line)] bg-[var(--paper-soft)] text-[var(--ink-soft)]">
       Awaiting evaluation
     </span>
   );
@@ -141,11 +142,11 @@ export default function JobCard({ job }: { job: Job }) {
   const source = detectSource(job.url);
 
   return (
-    <div className="relative bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow flex flex-col h-130 cursor-pointer group">
+    <div className="relative card card-hover flex flex-col h-130 cursor-pointer group">
       {/* Stretched link — entire card navigates to detail page */}
       <Link
         href={`/jobs/${job.id}`}
-        className="absolute inset-0 rounded-2xl z-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        className="absolute inset-0 rounded-2xl z-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
         aria-label={`View details for ${job.title} at ${job.company}`}
       />
 
@@ -210,10 +211,10 @@ export default function JobCard({ job }: { job: Job }) {
                 />
               )}
             </div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50 group-hover:text-blue-600 dark:group-hover:text-blue-400 leading-snug line-clamp-2 transition-colors">
+            <h2 className="text-lg font-bold text-[var(--ink)] group-hover:text-[var(--accent-ink)] leading-snug line-clamp-2 transition-colors font-display">
               {job.title}
             </h2>
-            <p className="mt-1 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+            <p className="mt-1 text-sm font-medium text-[var(--ink-soft)]">
               {job.company}
             </p>
           </div>

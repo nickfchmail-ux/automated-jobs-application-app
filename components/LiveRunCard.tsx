@@ -26,6 +26,7 @@ export default function LiveRunCard() {
   const {
     phase,
     keyword,
+    runId,
     boards,
     counts,
     connection,
@@ -33,7 +34,6 @@ export default function LiveRunCard() {
     jobStream,
     boardsDetail,
     evaluationStatus,
-    evaluationRuns,
   } = useSelector((s: RootState) => s.run);
 
   const active =
@@ -44,6 +44,20 @@ export default function LiveRunCard() {
   const newJobs = counts.unique || 0;
   const fits = counts.fit || 0;
   const live = copy.live;
+
+  // Real "what's left to match" for THIS run — count the run's own jobs that
+  // made it to a terminal state but haven't been scored yet. This stays
+  // scoped to the active run (unlike the account-wide search-key dropdown),
+  // so the prompt never claims "600 to match" when only 5 need matching.
+  const runUnevaluated = useMemo(
+    () =>
+      jobStream.filter(
+        (j) =>
+          (j.status === "completed" || j.status === "analysed") &&
+          j.fit_score === null,
+      ).length,
+    [jobStream],
+  );
 
   // Per-board breakdown — single source of truth used by BOTH the board
   // chips and the per-board status line so they can never disagree.
@@ -153,25 +167,15 @@ export default function LiveRunCard() {
   const resumeActive =
     (counts.resume_building || 0) + (counts.resume_done || 0) > 0;
 
-  // Evaluation progress summary — how many keyword batches are done.
-  const evalTotal = evaluationRuns.reduce((n, r) => n + (r.total_jobs ?? 0), 0);
-  const evalProcessed = evaluationRuns.reduce(
-    (n, r) => n + (r.processed_jobs ?? 0),
-    0,
-  );
-  const evalActive = evaluationRuns.some(
-    (r) => r.status === "evaluating" || r.status === "queued",
-  );
-  const showEvalSummary =
-    (evaluationStatus === "evaluating" || evaluationStatus === "queued") &&
-    evalTotal > 0;
-
-  // Scrape finished but the AI match hasn't run yet → point to the next step
-  // so the two separated steps (Search → Match) feel connected.
+  // Scrape finished and there are still unevaluated jobs in THIS run → point
+  // to the Match step. Uses the run-scoped count so the prompt never claims
+  // "600 ready to match" when only a handful actually need matching. Requires
+  // a known runId so the anchor resolves to a real control.
   const showMatchPrompt =
     phase === "completed" &&
+    !!runId &&
     evaluationStatus === "none" &&
-    (counts.unique || 0) > 0;
+    runUnevaluated > 0;
 
   // ── Stage strip — the "what's happening right now" funnel breakdown ──
   // Derived from the funnel counters PLUS the per-board `stage` values (from
@@ -569,10 +573,9 @@ export default function LiveRunCard() {
             aria-live="polite"
           >
             <p className="text-xs text-indigo-700 dark:text-indigo-300">
-              <strong className="font-semibold">
-                {counts.unique || 0} new
-              </strong>{" "}
-              jobs found — ready to match against your resume.
+              <strong className="font-semibold">{runUnevaluated}</strong> job
+              {runUnevaluated !== 1 ? "s" : ""} from this search still need
+              matching against your resume.
             </p>
             <a
               href="#match-jobs"
@@ -600,38 +603,6 @@ export default function LiveRunCard() {
           </div>
         )}
 
-        {/* Evaluation summary — "Matching 'react' — 12 of 20 jobs…" */}
-        {showEvalSummary && (
-          <div
-            className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-2"
-            role="status"
-            aria-live="polite"
-          >
-            <svg
-              className="w-3.5 h-3.5 text-blue-500 animate-spin motion-reduce:hidden"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            {evalActive
-              ? `Matching ${evalProcessed} of ${evalTotal} jobs against your resume…`
-              : `Preparing to match ${evalTotal} jobs…`}
-          </div>
-        )}
-
         {/* Funnel stats — lead with the number that matters (unique/saved),
             then explain the raw scrape total + duplicates parenthetically so
             "found" vs "new" never reads as two competing numbers. */}
@@ -645,8 +616,8 @@ export default function LiveRunCard() {
               {displayFound > displayNewJobs && (
                 <span className="text-zinc-400 dark:text-zinc-500">
                   {" "}
-                  · {displayFound} found,{" "}
-                  {displayFound - displayNewJobs} already in your list
+                  · {displayFound} found, {displayFound - displayNewJobs}{" "}
+                  already in your list
                 </span>
               )}
             </span>
@@ -680,15 +651,11 @@ export default function LiveRunCard() {
                 <thead>
                   <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-zinc-400 dark:text-zinc-500">
                     <th className="text-left font-medium px-3 py-1.5">Board</th>
-                    <th className="text-right font-medium px-3 py-1.5">
-                      New
-                    </th>
+                    <th className="text-right font-medium px-3 py-1.5">New</th>
                     <th className="text-right font-medium px-3 py-1.5">
                       Found
                     </th>
-                    <th className="text-right font-medium px-3 py-1.5">
-                      Dup
-                    </th>
+                    <th className="text-right font-medium px-3 py-1.5">Dup</th>
                     <th className="text-right font-medium px-3 py-1.5">
                       Reading
                     </th>
@@ -709,180 +676,180 @@ export default function LiveRunCard() {
                       const m = boardCounts.get(b);
                       return !m || ((m?.newSaved ?? 0) === 0 && !m?.stage);
                     }) && (
-                    <tr className="bg-white dark:bg-zinc-900">
-                      <td className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">
-                        All boards
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                        {displayNewJobs}
-                      </td>
-                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                        {displayFound}
-                      </td>
-                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                        {duplicateCount > 0 ? duplicateCount : "–"}
-                      </td>
-                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                        {processingCount > 0 ? processingCount : "–"}
-                      </td>
-                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                        –
-                      </td>
-                      <td className="px-3 py-2 text-left">
-                        <span className="text-zinc-400 dark:text-zinc-500">
-                          {displayNewJobs > 0
-                            ? `${displayNewJobs} new · ${duplicateCount} duplicate`
-                            : phase === "completed"
-                              ? "No new jobs"
-                              : "Working…"}
-                        </span>
-                      </td>
-                    </tr>
-                  )}
+                      <tr className="bg-white dark:bg-zinc-900">
+                        <td className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">
+                          All boards
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                          {displayNewJobs}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          {displayFound}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          {duplicateCount > 0 ? duplicateCount : "–"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          {processingCount > 0 ? processingCount : "–"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          –
+                        </td>
+                        <td className="px-3 py-2 text-left">
+                          <span className="text-zinc-400 dark:text-zinc-500">
+                            {displayNewJobs > 0
+                              ? `${displayNewJobs} new · ${duplicateCount} duplicate`
+                              : phase === "completed"
+                                ? "No new jobs"
+                                : "Working…"}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
 
                   {/* Per-board rows only when there's real per-board data —
                       otherwise the "All boards" fallback above is the only
                       row, so they never both show together. */}
                   {hasBoardData &&
                     boards.map((board) => {
-                    const meta = BOARD_META[board] ?? {
-                      label: board,
-                      color: "bg-zinc-500",
-                    };
+                      const meta = BOARD_META[board] ?? {
+                        label: board,
+                        color: "bg-zinc-500",
+                      };
 
-                    // Single merged source shared with the board chips.
-                    const merged = boardCounts.get(board);
-                    const newSaved = merged?.newSaved ?? 0;
-                    const foundCount = merged?.found ?? 0;
-                    const duplicate = merged?.duplicate ?? 0;
-                    const processing = merged?.processing ?? 0;
-                    const done = merged?.done ?? 0;
-                    const stage = merged?.stage;
-                    const label = merged?.displayName || meta.label;
-                    const finished =
-                      phase === "completed" || phase === "failed";
+                      // Single merged source shared with the board chips.
+                      const merged = boardCounts.get(board);
+                      const newSaved = merged?.newSaved ?? 0;
+                      const foundCount = merged?.found ?? 0;
+                      const duplicate = merged?.duplicate ?? 0;
+                      const processing = merged?.processing ?? 0;
+                      const done = merged?.done ?? 0;
+                      const stage = merged?.stage;
+                      const label = merged?.displayName || meta.label;
+                      const finished =
+                        phase === "completed" || phase === "failed";
 
-                    // stage → status copy + tone
-                    const stageCopy = (() => {
-                      const err = merged?.lastError ?? "";
-                      switch (stage) {
-                        case "done":
-                          return {
-                            text: "Done ✓",
-                            tone: "text-emerald-600 dark:text-emerald-400",
-                          };
-                        case "blocked":
-                          return {
-                            text: `Blocked — anti-bot${err ? `: ${err.slice(0, 40)}` : ""}`,
-                            tone: "text-amber-600 dark:text-amber-400",
-                          };
-                        case "failed":
-                          return {
-                            text: `Failed${err ? `: ${err.slice(0, 40)}` : ""}`,
-                            tone: "text-red-600 dark:text-red-400",
-                          };
-                        case "fetching":
-                          return {
-                            text: "Fetching jobs…",
-                            tone: "text-blue-600 dark:text-blue-400",
-                          };
-                        case "extracting":
-                          return {
-                            text: "Reading details…",
-                            tone: "text-indigo-600 dark:text-indigo-400",
-                          };
-                        case "pending":
-                          return {
-                            text: "Not started",
-                            tone: "text-zinc-400 dark:text-zinc-500",
-                          };
-                        default:
-                          return {
-                            text:
-                              newSaved > 0
-                                ? "Saving…"
-                                : finished
-                                  ? "None found"
-                                  : "Waiting…",
-                            tone: "text-zinc-400 dark:text-zinc-500",
-                          };
-                      }
-                    })();
+                      // stage → status copy + tone
+                      const stageCopy = (() => {
+                        const err = merged?.lastError ?? "";
+                        switch (stage) {
+                          case "done":
+                            return {
+                              text: "Done ✓",
+                              tone: "text-emerald-600 dark:text-emerald-400",
+                            };
+                          case "blocked":
+                            return {
+                              text: `Blocked — anti-bot${err ? `: ${err.slice(0, 40)}` : ""}`,
+                              tone: "text-amber-600 dark:text-amber-400",
+                            };
+                          case "failed":
+                            return {
+                              text: `Failed${err ? `: ${err.slice(0, 40)}` : ""}`,
+                              tone: "text-red-600 dark:text-red-400",
+                            };
+                          case "fetching":
+                            return {
+                              text: "Fetching jobs…",
+                              tone: "text-blue-600 dark:text-blue-400",
+                            };
+                          case "extracting":
+                            return {
+                              text: "Reading details…",
+                              tone: "text-indigo-600 dark:text-indigo-400",
+                            };
+                          case "pending":
+                            return {
+                              text: "Not started",
+                              tone: "text-zinc-400 dark:text-zinc-500",
+                            };
+                          default:
+                            return {
+                              text:
+                                newSaved > 0
+                                  ? "Saving…"
+                                  : finished
+                                    ? "None found"
+                                    : "Waiting…",
+                              tone: "text-zinc-400 dark:text-zinc-500",
+                            };
+                        }
+                      })();
 
-                    const working =
-                      stage === "fetching" || stage === "extracting";
+                      const working =
+                        stage === "fetching" || stage === "extracting";
 
-                    return (
-                      <tr
-                        key={board}
-                        className="bg-white dark:bg-zinc-900"
-                        title={merged?.lastError ?? undefined}
-                      >
-                        <td className="px-3 py-2">
-                          <span className="inline-flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-400">
-                            <span
-                              className={`relative flex w-2 h-2`}
-                              aria-hidden="true"
-                            >
-                              {(working || processing > 0) && (
-                                <span
-                                  className={`absolute inline-flex h-full w-full rounded-full ${meta.color} opacity-75 motion-safe:animate-ping`}
-                                />
-                              )}
+                      return (
+                        <tr
+                          key={board}
+                          className="bg-white dark:bg-zinc-900"
+                          title={merged?.lastError ?? undefined}
+                        >
+                          <td className="px-3 py-2">
+                            <span className="inline-flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-400">
                               <span
-                                className={`relative inline-flex rounded-full w-2 h-2 ${meta.color} ${
-                                  finished ? "opacity-60" : ""
-                                }`}
-                              />
-                            </span>
-                            {label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                          {newSaved}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          {foundCount}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-400 dark:text-zinc-500 tabular-nums">
-                          {duplicate > 0 ? duplicate : "0"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          {processing > 0 ? processing : "–"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          {done > 0 ? done : "–"}
-                        </td>
-                        <td className="px-3 py-2 text-left">
-                          <span className={stageCopy.tone}>
-                            {working && (
-                              <svg
-                                className="inline w-3 h-3 mr-1 animate-spin motion-reduce:hidden"
-                                fill="none"
-                                viewBox="0 0 24 24"
+                                className={`relative flex w-2 h-2`}
                                 aria-hidden="true"
                               >
-                                <circle
-                                  className="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  strokeWidth="4"
+                                {(working || processing > 0) && (
+                                  <span
+                                    className={`absolute inline-flex h-full w-full rounded-full ${meta.color} opacity-75 motion-safe:animate-ping`}
+                                  />
+                                )}
+                                <span
+                                  className={`relative inline-flex rounded-full w-2 h-2 ${meta.color} ${
+                                    finished ? "opacity-60" : ""
+                                  }`}
                                 />
-                                <path
-                                  className="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                />
-                              </svg>
-                            )}
-                            {stageCopy.text}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                              </span>
+                              {label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                            {newSaved}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                            {foundCount}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-400 dark:text-zinc-500 tabular-nums">
+                            {duplicate > 0 ? duplicate : "0"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                            {processing > 0 ? processing : "–"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                            {done > 0 ? done : "–"}
+                          </td>
+                          <td className="px-3 py-2 text-left">
+                            <span className={stageCopy.tone}>
+                              {working && (
+                                <svg
+                                  className="inline w-3 h-3 mr-1 animate-spin motion-reduce:hidden"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  aria-hidden="true"
+                                >
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                  />
+                                </svg>
+                              )}
+                              {stageCopy.text}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

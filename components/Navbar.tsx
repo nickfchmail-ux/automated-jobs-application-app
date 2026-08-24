@@ -8,14 +8,14 @@ import { useSelector } from "react-redux";
 
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import CloseIcon from "@mui/icons-material/Close";
-import GppBadOutlinedIcon from "@mui/icons-material/GppBadOutlined";
+import InsightsIcon from "@mui/icons-material/Insights";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import MenuIcon from "@mui/icons-material/Menu";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
-import SentimentSatisfiedAltIcon from "@mui/icons-material/SentimentSatisfiedAlt";
-import SickOutlinedIcon from "@mui/icons-material/SickOutlined";
-import SpaceDashboardIcon from "@mui/icons-material/SpaceDashboard";
+import SearchIcon from "@mui/icons-material/Search";
+import TuneIcon from "@mui/icons-material/Tune";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
 
@@ -27,34 +27,43 @@ type NavItem = {
 };
 
 const LINK_CLASS = {
-  base: "flex items-center gap-3 w-full text-sm font-medium px-3 py-2 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500",
-  idle: "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/70 hover:text-zinc-900 dark:hover:text-zinc-100",
+  base: "flex items-center gap-3 w-full text-sm font-medium px-3 py-2 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+  idle: "text-[var(--ink-soft)] hover:bg-[var(--paper-soft)] hover:text-[var(--ink)]",
   active:
-    "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800",
+    "bg-[var(--accent-soft)] text-[var(--accent-ink)] border border-[var(--line)]",
 };
 
 export default function Navbar() {
-  // Fit/Not-fit badges hydrate client-side from the live funnel counts
-  // (stats:summary via useRealtimeRun) so the layout never blocks on
-  // Supabase count queries.
-  const fit = useSelector((s: RootState) => s.run.counts.fit ?? 0);
-  const notFit = useSelector((s: RootState) => s.run.counts.unfit ?? 0);
+  // Fit/Not-fit badges hydrate client-side from the aggregate funnel
+  // (stats:summary via useRealtimeRun, stored in `run.summary`) so the
+  // layout never blocks on Supabase count queries. `run.summary` is kept
+  // separate from `run.counts` (the active run's funnel) so the live card
+  // never shows lifetime totals.
+  const fit = useSelector((s: RootState) => s.run.summary.fit ?? 0);
+  const notFit = useSelector((s: RootState) => s.run.summary.unfit ?? 0);
 
   const pathName = usePathname();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // A nav item is active when the current path equals its href, or (for /
+  // and /overview) when the path is exactly the item's href. /matches is
+  // active for /matches?view=notfit too.
+  const isActive = (href: string) =>
+    pathName === href ||
+    (href === "/matches" && pathName.startsWith("/matches"));
+
   const groups: { label: string; items: NavItem[] }[] = [
     {
-      label: "Overview",
+      label: "Analyze",
       items: [
         {
-          href: "/",
-          label: "Dashboard",
+          href: "/overview",
+          label: "Overview",
           icon: (a) => (
-            <SpaceDashboardIcon
+            <InsightsIcon
               className={
-                a ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500"
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
             />
           ),
@@ -62,26 +71,26 @@ export default function Navbar() {
       ],
     },
     {
-      label: "Browse",
+      label: "Act",
       items: [
         {
-          href: "/jobs",
-          label: "All Jobs",
+          href: "/search",
+          label: "Search",
           icon: (a) => (
-            <ListAltIcon
+            <SearchIcon
               className={
-                a ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500"
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
             />
           ),
         },
         {
-          href: "/not-evaluated",
-          label: "To Review",
+          href: "/review",
+          label: "To review",
           icon: (a) => (
             <PendingActionsIcon
               className={
-                a ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500"
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
             />
           ),
@@ -92,40 +101,36 @@ export default function Navbar() {
       label: "Results",
       items: [
         {
-          href: "/fit",
-          label: "Good Fit",
+          href: "/matches",
+          label: "Matches",
           badge: fit,
           icon: (a) => (
-            <SentimentSatisfiedAltIcon
+            <TuneIcon
               className={
-                a
-                  ? "text-indigo-600 dark:text-indigo-400"
-                  : "text-emerald-600 dark:text-emerald-400"
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
             />
           ),
         },
         {
-          href: "/not-fit",
-          label: "Not Fit",
+          href: "/jobs",
+          label: "All listings",
+          icon: (a) => (
+            <ListAltIcon
+              className={
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
+              }
+            />
+          ),
+        },
+        {
+          href: "/saved",
+          label: "Saved",
           badge: notFit,
           icon: (a) => (
-            <GppBadOutlinedIcon
+            <BookmarkBorderIcon
               className={
-                a
-                  ? "text-indigo-600 dark:text-indigo-400"
-                  : "text-rose-500 dark:text-rose-400"
-              }
-            />
-          ),
-        },
-        {
-          href: "/not-interested",
-          label: "Skipped",
-          icon: (a) => (
-            <SickOutlinedIcon
-              className={
-                a ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500"
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
             />
           ),
@@ -141,7 +146,7 @@ export default function Navbar() {
           icon: (a) => (
             <AssignmentIndIcon
               className={
-                a ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-500"
+                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
             />
           ),
@@ -170,7 +175,7 @@ export default function Navbar() {
         </span>
         <span className="flex-1 text-left">{item.label}</span>
         {typeof item.badge === "number" && item.badge > 0 && (
-          <span className="tabular-nums text-xs font-semibold px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+          <span className="tabular-nums font-data text-xs font-semibold px-1.5 py-0.5 rounded-full bg-[var(--paper-soft)] text-[var(--ink-soft)]">
             {item.badge}
           </span>
         )}
@@ -181,10 +186,10 @@ export default function Navbar() {
   function renderGroup(label: string, items: NavItem[]) {
     return (
       <div className="space-y-1">
-        <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+        <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">
           {label}
         </p>
-        {items.map((item) => renderNavItem(item, pathName === item.href))}
+        {items.map((item) => renderNavItem(item, isActive(item.href)))}
       </div>
     );
   }
@@ -218,29 +223,29 @@ export default function Navbar() {
     </form>
   );
 
-  const startMatchingCta = (
+  const startSearchCta = (
     <button
-      onClick={() => go("/evaluate")}
-      className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-4 py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+      onClick={() => go("/search")}
+      className="w-full flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-ink)] text-white font-semibold text-sm px-4 py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
     >
       <AutoAwesomeIcon className="w-4 h-4" />
-      Start matching
+      Search &amp; match
     </button>
   );
 
   const shell = (
-    <div className="h-full flex flex-col bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800">
+    <div className="h-full flex flex-col bg-[var(--surface)] border-r border-[var(--line)]">
       {/* Brand */}
       <div className="px-4 pt-5 pb-2">
-        <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold">
-            <span className="text-sm">J</span>
+        <Link href="/overview" className="flex items-center gap-2.5 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white font-bold">
+            <span className="text-sm font-display">J</span>
           </div>
           <div className="leading-tight">
-            <p className="text-sm font-bold text-zinc-900 dark:text-zinc-50 font-display">
+            <p className="text-sm font-bold text-[var(--ink)] font-display">
               JobSeek
             </p>
-            <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+            <p className="text-[11px] text-[var(--ink-faint)]">
               Smart careers, simplified by AI
             </p>
           </div>
@@ -248,7 +253,7 @@ export default function Navbar() {
       </div>
 
       {/* CTA */}
-      <div className="px-4 pt-3">{startMatchingCta}</div>
+      <div className="px-4 pt-3">{startSearchCta}</div>
 
       {/* Nav groups */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
@@ -272,30 +277,28 @@ export default function Navbar() {
       </aside>
 
       {/* Mobile top bar */}
-      <header className="lg:hidden sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+      <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)]">
         <div className="flex items-center justify-between px-4 py-3">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">
-              <span className="text-xs">J</span>
+          <Link href="/overview" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center text-white font-bold">
+              <span className="text-xs font-display">J</span>
             </div>
-            <span className="text-sm font-bold text-zinc-900 dark:text-zinc-50 font-display">
+            <span className="text-sm font-bold text-[var(--ink)] font-display">
               JobSeek
             </span>
           </Link>
           <div className="flex items-center gap-2">
-            {startMatchingCta && (
-              <button
-                onClick={() => go("/evaluate")}
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-              >
-                <AutoAwesomeIcon className="w-3.5 h-3.5" />
-                Start matching
-              </button>
-            )}
+            <button
+              onClick={() => go("/search")}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-ink)] text-white text-xs font-semibold px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              <AutoAwesomeIcon className="w-3.5 h-3.5" />
+              Search
+            </button>
             <IconButton
               onClick={() => setDrawerOpen(true)}
               aria-label="Open navigation menu"
-              sx={{ color: "var(--color-zinc-600)" }}
+              sx={{ color: "var(--ink-soft)" }}
             >
               <MenuIcon />
             </IconButton>
@@ -311,11 +314,11 @@ export default function Navbar() {
         PaperProps={{
           sx: {
             width: 272,
-            bgcolor: "var(--color-zinc-900, #fff)",
+            bgcolor: "var(--surface)",
           },
         }}
       >
-        <div className="relative h-full bg-white dark:bg-zinc-900">
+        <div className="relative h-full bg-[var(--surface)]">
           <IconButton
             onClick={() => setDrawerOpen(false)}
             aria-label="Close navigation menu"
@@ -323,7 +326,7 @@ export default function Navbar() {
               position: "absolute",
               top: 12,
               right: 8,
-              color: "var(--color-zinc-500)",
+              color: "var(--ink-soft)",
             }}
           >
             <CloseIcon fontSize="small" />

@@ -221,11 +221,18 @@ export default function RealtimeJobStream({
       ))}
 
       {/* Batching calm: a quiet total line rather than animating dozens of cards */}
-      <p className="text-xs text-zinc-400 dark:text-zinc-500">
-        {total > jobs.length
-          ? `${jobs.length} shown of ${total} new — keep scrolling for more`
-          : `${jobs.length} new ${jobs.length === 1 ? "job" : "jobs"} this search`}
-      </p>
+      {jobs.length === 0 ? (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          {total} new {total === 1 ? "job" : "jobs"} from this search — the list
+          will fill in as they stream in.
+        </p>
+      ) : (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          {total > jobs.length
+            ? `${jobs.length} shown of ${total} new — keep scrolling for more`
+            : `${jobs.length} new ${jobs.length === 1 ? "job" : "jobs"} this search`}
+        </p>
+      )}
     </div>
   );
 }

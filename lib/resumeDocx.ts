@@ -2,7 +2,6 @@ import {
   AlignmentType,
   BorderStyle,
   Document,
-  HeadingLevel,
   Packer,
   Paragraph,
   TextRun,
@@ -106,7 +105,13 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
   children.push(
     new Paragraph({
       children: [
-        new TextRun({ text: name, bold: true, size: 40, font: FONT, color: "111827" }),
+        new TextRun({
+          text: name,
+          bold: true,
+          size: 40,
+          font: FONT,
+          color: "111827",
+        }),
       ],
       alignment: AlignmentType.CENTER,
       spacing: { after: 60 },
@@ -115,7 +120,14 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
   if (contact) {
     children.push(
       new Paragraph({
-        children: [new TextRun({ text: contact, size: 20, font: FONT, color: MUTED_COLOR })],
+        children: [
+          new TextRun({
+            text: contact,
+            size: 20,
+            font: FONT,
+            color: MUTED_COLOR,
+          }),
+        ],
         alignment: AlignmentType.CENTER,
         spacing: { after: 200 },
       }),
@@ -123,7 +135,9 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
   }
   children.push(
     new Paragraph({
-      border: { bottom: { color: SECTION_COLOR, style: BorderStyle.SINGLE, size: 8 } },
+      border: {
+        bottom: { color: SECTION_COLOR, style: BorderStyle.SINGLE, size: 8 },
+      },
       spacing: { after: 200 },
       text: "",
     }),
@@ -156,14 +170,22 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
             }),
           ],
           spacing: { before: 240, after: 80 },
-          border: { bottom: { color: "CCFBF1", style: BorderStyle.SINGLE, size: 4 } },
+          border: {
+            bottom: { color: "CCFBF1", style: BorderStyle.SINGLE, size: 4 },
+          },
         }),
       );
     } else if (tag === "h3") {
       children.push(
         new Paragraph({
           children: [
-            new TextRun({ text, bold: true, size: 23, font: FONT, color: "111827" }),
+            new TextRun({
+              text,
+              bold: true,
+              size: 23,
+              font: FONT,
+              color: "111827",
+            }),
           ],
           spacing: { before: 160, after: 40 },
         }),
@@ -178,8 +200,18 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
         children.push(
           new Paragraph({
             children: [
-              new TextRun({ text: "•  ", size: 22, font: FONT, color: SECTION_COLOR }),
-              new TextRun({ text: liText, size: 22, font: FONT, color: BODY_COLOR }),
+              new TextRun({
+                text: "•  ",
+                size: 22,
+                font: FONT,
+                color: SECTION_COLOR,
+              }),
+              new TextRun({
+                text: liText,
+                size: 22,
+                font: FONT,
+                color: BODY_COLOR,
+              }),
             ],
             indent: { left: 360, hanging: 200 },
             spacing: { after: 60 },
@@ -189,7 +221,9 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
     } else if (tag === "p" && text) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text, size: 22, font: FONT, color: BODY_COLOR })],
+          children: [
+            new TextRun({ text, size: 22, font: FONT, color: BODY_COLOR }),
+          ],
           spacing: { after: 80 },
         }),
       );
@@ -203,7 +237,15 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
     for (const h of h2s) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: h.toUpperCase(), bold: true, size: 22, font: FONT, color: SECTION_COLOR })],
+          children: [
+            new TextRun({
+              text: h.toUpperCase(),
+              bold: true,
+              size: 22,
+              font: FONT,
+              color: SECTION_COLOR,
+            }),
+          ],
           spacing: { before: 240, after: 80 },
         }),
       );
@@ -211,7 +253,9 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
     for (const sub of h3s) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: sub, bold: true, size: 23, font: FONT })],
+          children: [
+            new TextRun({ text: sub, bold: true, size: 23, font: FONT }),
+          ],
           spacing: { before: 160, after: 40 },
         }),
       );
@@ -219,7 +263,9 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
     for (const p of ps) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: p, size: 22, font: FONT, color: BODY_COLOR })],
+          children: [
+            new TextRun({ text: p, size: 22, font: FONT, color: BODY_COLOR }),
+          ],
           spacing: { after: 80 },
         }),
       );
@@ -228,7 +274,12 @@ export async function buildResumeDocx(html: string): Promise<Blob> {
       children.push(
         new Paragraph({
           children: [
-            new TextRun({ text: "•  ", size: 22, font: FONT, color: SECTION_COLOR }),
+            new TextRun({
+              text: "•  ",
+              size: 22,
+              font: FONT,
+              color: SECTION_COLOR,
+            }),
             new TextRun({ text: li, size: 22, font: FONT, color: BODY_COLOR }),
           ],
           indent: { left: 360, hanging: 200 },

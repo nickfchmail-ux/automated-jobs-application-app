@@ -1,43 +1,142 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ==================================================================== */
+/*  JobSeek design tokens — Stripe-inspired, editorial, data-literate.  */
+/*  Warm paper canvas, one violet accent, precise data typography.      */
+/* ==================================================================== */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-display);
+:root {
+  /* Canvas — warm paper, not pure white */
+  --paper: #faf9f7;
+  --paper-soft: #f4f2ee;
+  --surface: #ffffff;
+  --ink: #1c1917; /* stone-900 */
+  --ink-soft: #57534e; /* stone-600 */
+  --ink-faint: #a8a29e; /* stone-400 */
+  --line: #e7e5e4; /* stone-200 */
+  --line-strong: #d6d3d1; /* stone-300 */
+
+  /* Accent — the single memorable color (Stripe-style restraint) */
+  --accent: #7c3aed; /* violet-600 */
+  --accent-ink: #6d28d9; /* violet-700 */
+  --accent-soft: #f5f3ff; /* violet-50 */
+
+  /* Semantic — success / money, warning, gap */
+  --good: #059669; /* emerald-600 */
+  --good-soft: #ecfdf5;
+  --warn: #d97706; /* amber-600 */
+  --warn-soft: #fffbeb;
+  --bad: #e11d48; /* rose-600 */
+  --bad-soft: #fff1f2;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0c0a09; /* stone-950 */
+    --paper-soft: #141210;
+    --surface: #1c1917; /* stone-900 */
+    --ink: #fafaf9; /* stone-50 */
+    --ink-soft: #a8a29e; /* stone-400 */
+    --ink-faint: #57534e; /* stone-600 */
+    --line: #292524; /* stone-800 */
+    --line-strong: #44403c; /* stone-700 */
+
+    --accent: #a78bfa; /* violet-400 */
+    --accent-ink: #c4b5fd;
+    --accent-soft: #1e1b4b;
+
+    --good: #34d399; /* emerald-400 */
+    --good-soft: #022c22;
+    --warn: #fbbf24;
+    --warn-soft: #451a03;
+    --bad: #fb7185; /* rose-400 */
+    --bad-soft: #4c0519;
   }
 }
 
+@theme inline {
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+  --font-serif: var(--font-serif);
+  --font-data: var(--font-data);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Fit-semantic color language (the design signature).               */
-/*  Always pair color with text/label — never color alone (WCAG 1.4.1). */
+/*  Type utilities                                                     */
 /* ------------------------------------------------------------------ */
 @layer utilities {
   .font-display {
     font-family: var(--font-display), var(--font-geist-sans), sans-serif;
   }
-
+  /* Editorial serif for the signature headline figures. */
+  .font-serif {
+    font-family: var(--font-serif), Georgia, serif;
+  }
+  /* Precise mono for scores, counts, and data (Stripe data-typography). */
+  .font-data {
+    font-family: var(--font-data), var(--font-geist-mono), monospace;
+  }
   /* Scores + counts use tabular numerals so live numbers don't jiggle. */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Signature surface — the "card" language: hairline, generous pad.   */
+/* ------------------------------------------------------------------ */
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow:
+      0 1px 2px rgb(28 25 23 / 0.04),
+      0 4px 12px rgb(28 25 23 / 0.04);
+  }
+  .card-hover {
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+  }
+  .card-hover:hover {
+    border-color: var(--line-strong);
+    box-shadow:
+      0 1px 2px rgb(28 25 23 / 0.05),
+      0 8px 24px rgb(28 25 23 / 0.07);
+    transform: translateY(-1px);
+  }
+  .eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .hairline {
+    border: 0;
+    border-top: 1px solid var(--line);
   }
 }
 

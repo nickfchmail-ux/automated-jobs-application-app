@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Manrope } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+  IBM_Plex_Mono,
+  Instrument_Serif,
+  Manrope,
+} from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,6 +22,21 @@ const geistMono = Geist_Mono({
 // geometric. Loaded once at build (self-hosted, no runtime fetch).
 const manrope = Manrope({
   variable: "--font-display",
+  subsets: ["latin"],
+});
+
+// Editorial serif for the signature headline figures (the "match rate" /
+// "strength" numbers) — the one memorable type moment.
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-serif",
+  weight: "400",
+  subsets: ["latin"],
+});
+
+// Data / scores use a precise mono face (Stripe's data-typography feel).
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-data",
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
 });
 
@@ -38,7 +59,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} ${instrumentSerif.variable} ${plexMono.variable} antialiased`}
       >
         {children}
       </body>

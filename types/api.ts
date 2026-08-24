@@ -242,6 +242,12 @@ export interface EvaluationRunRow {
   total_jobs: number;
   processed_jobs: number;
   failed_jobs: number;
+  /** Jobs scored as a fit — provided by the socket payload (not the DB row). */
+  fit_jobs?: number;
+  /** Jobs scored as not a fit — provided by the socket payload. */
+  not_fit_jobs?: number;
+  /** Jobs still waiting to be scored — provided by the socket payload. */
+  remaining_jobs?: number;
   last_error: string | null;
   started_at: string | null;
   completed_at: string | null;

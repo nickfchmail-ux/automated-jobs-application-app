@@ -1,0 +1,71 @@
+import FitFilters from "@/components/FitFilters";
+import type { Job } from "@/components/JobCard";
+import { getUserId } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+export const revalidate = 0;
+
+export const metadata: Metadata = {
+  title: "To Review",
+};
+
+/**
+ * /review — scraped jobs that haven't been scored by the AI yet.
+ *
+ * These are the "raw" listings waiting for a match run. Once evaluated they
+ * move to /matches. Replaces the old /not-evaluated page.
+ */
+export default async function ReviewPage() {
+  const userId = await getUserId();
+  if (!userId) redirect("/login");
+
+  let jobs: Job[] = [];
+  try {
+    const result = await supabase
+      .from("jobs")
+      .select("*")
+      .eq("user_id", userId)
+      .is("fit_score", null);
+
+    if (result.error) {
+      console.error("[ReviewPage] Supabase query error:", result.error);
+    } else {
+      jobs = (result.data as Job[]) ?? [];
+    }
+  } catch (err) {
+    console.error("[ReviewPage] Unexpected error fetching jobs:", err);
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10 space-y-8">
+      <header>
+        <p className="eyebrow">Review</p>
+        <h1 className="mt-2 text-3xl font-display font-semibold tracking-tight text-[var(--ink)]">
+          To review
+        </h1>
+        <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-xl">
+          Jobs scraped but not yet scored. Run a match to get the AI&apos;s
+          verdict on each one.
+        </p>
+      </header>
+
+      <FitFilters
+        jobs={jobs}
+        emptyMessage="Nothing waiting — everything has been scored, or you haven't searched yet. Start a search to bring jobs in."
+      />
+
+      <p className="text-sm text-[var(--ink-faint)]">
+        Ready to score these?{" "}
+        <Link
+          href="/search"
+          className="font-medium text-[var(--accent-ink)] hover:underline"
+        >
+          Run a match →
+        </Link>
+      </p>
+    </div>
+  );
+}

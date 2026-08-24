@@ -139,6 +139,108 @@ export async function getEvaluationStatusAction(
 
 // ── Local Supabase helpers (no evaluator call needed) ─────────────
 
+/** One search key in the evaluator's "match" dropdown. */
+export interface SearchKeyOption {
+  /** Normalized search_key (e.g. "web_developer") — sent to the evaluator. */
+  searchKey: string;
+  /** Human display keyword (e.g. "web developer") — shown in the dropdown. */
+  keyword: string;
+  /** Total jobs scraped under this key. */
+  total: number;
+  /** Jobs under this key that have NOT been evaluated yet. */
+  unevaluated: number;
+  /**
+   * A valid `pipeline_runs.id` that has unevaluated jobs under this key.
+   * Lets the UI trigger evaluation even when there's no active run in Redux
+   * (e.g. after a page reload) — the evaluator requires a completed run.
+   */
+  runId: string | null;
+}
+
+export type ListSearchKeysResult =
+  | { ok: true; keys: SearchKeyOption[]; runId: string | null }
+  | { ok: false; error: string };
+
+/**
+ * List the search keys that still have unevaluated posts — ACROSS ALL of the
+ * user's runs (not just one run). This is the authoritative source for the
+ * "Match" dropdown: it reads the `jobs` table (not transient Redux state),
+ * groups by `search_key` across every completed run, and only returns keys
+ * where `fit_score IS NULL` (i.e. not yet evaluated). The `runId` is passed
+ * through so the UI can highlight the current search's key, but the list
+ * itself is account-wide.
+ */
+export async function listSearchKeysAction(
+  runId: string | null = null,
+): Promise<ListSearchKeysResult> {
+  const userId = await getUserId();
+  if (!userId) return { ok: false, error: "Not authenticated." };
+
+  try {
+    // Fetch search_key + fit_score + pipeline_run_id for ALL the user's jobs
+    // that made it through scraping. We group account-wide so every search
+    // key with unevaluated posts shows up, not just the current run's.
+    const { data: scored, error: scoredErr } = await supabase
+      .from("jobs")
+      .select("search_key, fit_score, pipeline_run_id")
+      .eq("user_id", userId)
+      .in("status", ["completed", "analysed"]);
+
+    if (scoredErr) {
+      console.error(
+        "[listSearchKeysAction] scored query error:",
+        scoredErr.message,
+      );
+      return { ok: false, error: scoredErr.message };
+    }
+
+    const byKey = new Map<
+      string,
+      { total: number; unevaluated: number; runId: string | null }
+    >();
+    for (const row of (scored ?? []) as {
+      search_key: string | null;
+      fit_score: number | null;
+      pipeline_run_id: string | null;
+    }[]) {
+      const key = (row.search_key ?? "").trim().toLowerCase();
+      if (!key) continue;
+      const entry = byKey.get(key) ?? {
+        total: 0,
+        unevaluated: 0,
+        runId: null,
+      };
+      entry.total++;
+      if (row.fit_score === null) {
+        entry.unevaluated++;
+        // Remember a run that has unevaluated jobs under this key so we can
+        // always trigger evaluation with a valid run context.
+        if (!entry.runId && row.pipeline_run_id) {
+          entry.runId = row.pipeline_run_id;
+        }
+      }
+      byKey.set(key, entry);
+    }
+
+    const keys: SearchKeyOption[] = [...byKey.entries()]
+      .map(([searchKey, { total, unevaluated, runId: keyRunId }]) => ({
+        searchKey,
+        keyword: searchKey.replace(/_/g, " "),
+        total,
+        unevaluated,
+        runId: keyRunId,
+      }))
+      // Only keys that still have unevaluated posts belong in the dropdown.
+      .filter((k) => k.unevaluated > 0)
+      .sort((a, b) => b.unevaluated - a.unevaluated || b.total - a.total);
+
+    return { ok: true, keys, runId };
+  } catch (e) {
+    console.error("[listSearchKeysAction] Unexpected error:", e);
+    return { ok: false, error: "Could not load search keys." };
+  }
+}
+
 export type GetEvaluationRunsResult =
   | { ok: true; runs: EvaluationRunRow[] }
   | { ok: false; error: string };

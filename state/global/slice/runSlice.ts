@@ -68,7 +68,12 @@ interface RunState {
   runId: string | null;
   keyword: string | null;
   boards: string[];
+  /** The ACTIVE run's funnel — never mixed with the aggregate summary. */
   counts: FunnelCounts;
+  /** Aggregate funnel across ALL runs — drives the navbar badges only.
+   *  Kept separate from `counts` so the live card never shows lifetime
+   *  totals (e.g. "615 new") instead of this run's numbers (e.g. "6 new"). */
+  summary: FunnelCounts;
   /** Per-board breakdown, keyed by board name. Populated live from the
    *  socket `stats:run` `boards` payload (scraped/duplicate/unique/
    *  processing) and the REST fallback (scraped/fit/completed). */
@@ -89,6 +94,7 @@ const initialState: RunState = {
   keyword: null,
   boards: [],
   counts: { ...EMPTY_COUNTS },
+  summary: { ...EMPTY_COUNTS },
   boardsDetail: {},
   jobStream: [],
   errorMsg: "",
@@ -110,6 +116,7 @@ const runSlice = createSlice({
       state.keyword = action.payload.keyword;
       state.boards = action.payload.boards;
       state.counts = { ...EMPTY_COUNTS };
+      state.summary = { ...EMPTY_COUNTS };
       state.boardsDetail = {};
       state.jobStream = [];
       state.errorMsg = "";
@@ -129,6 +136,11 @@ const runSlice = createSlice({
     },
     runCountsUpdated(state, action: PayloadAction<FunnelCounts>) {
       state.counts = action.payload;
+    },
+    /** Aggregate funnel across ALL runs — navbar badges only. Never touches
+     *  `counts` so the live card stays scoped to the active run. */
+    runSummaryUpdated(state, action: PayloadAction<FunnelCounts>) {
+      state.summary = action.payload;
     },
     runBoardUpdated(
       state,
@@ -220,6 +232,7 @@ const runSlice = createSlice({
       state.keyword = null;
       state.boards = [];
       state.counts = { ...EMPTY_COUNTS };
+      state.summary = { ...EMPTY_COUNTS };
       state.boardsDetail = {};
       state.jobStream = [];
       state.errorMsg = "";
@@ -234,6 +247,7 @@ export const {
   runQueued,
   runConnection,
   runCountsUpdated,
+  runSummaryUpdated,
   runBoardUpdated,
   runBoardsUpdated,
   runStatusUpdated,

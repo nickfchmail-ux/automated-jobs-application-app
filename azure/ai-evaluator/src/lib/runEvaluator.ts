@@ -44,17 +44,30 @@ export async function evaluateRun(params: {
   const { pipelineRunId, userId, searchKey, log } = params;
   const sb = getSupabase();
 
+  // Normalize the incoming key to the stored form (lowercase + underscores)
+  // so a client-supplied "Web Developer" can never miss "web_developer".
+  const normalizedKey = searchKey?.trim().toLowerCase().replace(/\s+/g, "_");
+
   // Only evaluate jobs that made it through scraping and haven't been scored.
+  //
+  // When a `searchKey` is provided, we deliberately DROP the `pipeline_run_id`
+  // filter and evaluate ALL unevaluated jobs with that search_key across every
+  // run in the user's account. This makes "Match 9 jobs" actually evaluate all
+  // 9 (the dropdown counts account-wide), instead of just the handful in the
+  // single run that happened to trigger the call. `pipelineRunId` is still used
+  // below for status tracking (evaluation_runs + pipeline_runs.evaluation_status).
   let query = sb
     .from("jobs")
     .select("*")
-    .eq("pipeline_run_id", pipelineRunId)
     .eq("user_id", userId)
     .in("status", ["completed", "analysed"])
     .is("fit_score", null)
     .limit(500);
-  if (searchKey) {
-    query = query.eq("search_key", searchKey);
+  if (normalizedKey) {
+    query = query.eq("search_key", normalizedKey);
+  } else {
+    // No key → fall back to the run-scoped behavior.
+    query = query.eq("pipeline_run_id", pipelineRunId);
   }
   const { data: rows, error: loadErr } = await query;
   if (loadErr) {
@@ -287,6 +300,24 @@ export async function evaluateRun(params: {
   ).catch((e) => {
     log(`Failed to set final evaluation status: ${e.message}`);
   });
+
+  // When a search_key was used, jobs spanned MULTIPLE runs. Mark every run
+  // that had jobs in this batch as completed too, so no run is left looking
+  // like it still has pending evaluation work.
+  if (normalizedKey) {
+    const affectedRunIds = new Set(
+      jobs.map((j) => j.pipeline_run_id).filter(Boolean) as string[],
+    );
+    for (const rid of affectedRunIds) {
+      await setPipelineRunEvaluationStatus(
+        rid,
+        userId,
+        overallStatus,
+        null,
+      ).catch((e) => log(`Failed to set status for run ${rid}: ${e.message}`));
+    }
+  }
+
   // Push the terminal evaluation state to the user's WebSocket room.
   await notifyStateChange(userId, pipelineRunId);
 

@@ -14,6 +14,12 @@ const BOARD_LABELS: Record<string, string> = {
 /** A run older than this that still looks "in progress" is treated as stalled. */
 const STALL_AFTER_MIN = 45;
 
+/** Human copy for a run that never finished. */
+const STALL_COPY = {
+  label: "Didn't finish",
+  detail: "Left incomplete — you can search again anytime.",
+};
+
 /** How long before "just now" becomes a real timestamp label. */
 const JUST_NOW_MIN = 1;
 
@@ -68,6 +74,11 @@ function deriveRunState(counts: FunnelCounts, createdAt: string): RunState {
     };
   }
 
+  // At least one job made it through to the final saved state → done.
+  if ((counts.completed || 0) > 0) {
+    return { label: "Done ✓", tone: "success" };
+  }
+
   // Still discovering jobs (unique found but nothing processed yet).
   if ((counts.unique || 0) > 0) {
     return {
@@ -77,12 +88,8 @@ function deriveRunState(counts: FunnelCounts, createdAt: string): RunState {
     };
   }
 
-  if ((counts.completed || 0) > 0) {
-    return { label: "Done ✓", tone: "success" };
-  }
-
   return ageMin >= STALL_AFTER_MIN
-    ? { label: "Stalled", tone: "stalled" }
+    ? { ...STALL_COPY, tone: "stalled" }
     : { label: "In line…", tone: "neutral" };
 }
 

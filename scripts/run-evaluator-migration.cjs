@@ -22,14 +22,18 @@ async function main() {
   const client = new Client(CONN);
   try {
     await client.connect();
-    const u = await client.query("select current_user as u").then((r) => r.rows[0].u);
+    const u = await client
+      .query("select current_user as u")
+      .then((r) => r.rows[0].u);
     console.log("connected as", u);
     await client.query("begin");
     await client.query(sql);
     await client.query("commit");
     console.log("MIGRATION APPLIED OK");
   } catch (e) {
-    try { await client.query("rollback"); } catch {}
+    try {
+      await client.query("rollback");
+    } catch {}
     console.error("MIGRATION FAILED:", e.message);
     process.exitCode = 1;
   } finally {

@@ -2,12 +2,12 @@ import { fitBadge } from "@/lib/funnel";
 
 const BUCKET_STYLES: Record<string, string> = {
   great:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+    "bg-[var(--good-soft)] text-[var(--good)] border-[color-mix(in_srgb,var(--good)_20%,transparent)]",
   possible:
-    "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800",
-  low: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400 border-rose-200 dark:border-rose-800",
+    "bg-[var(--warn-soft)] text-[var(--warn)] border-[color-mix(in_srgb,var(--warn)_20%,transparent)]",
+  low: "bg-[var(--bad-soft)] text-[var(--bad)] border-[color-mix(in_srgb,var(--bad)_20%,transparent)]",
   "not-analysed":
-    "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700",
+    "bg-[var(--paper-soft)] text-[var(--ink-soft)] border-[var(--line)]",
 };
 
 /**

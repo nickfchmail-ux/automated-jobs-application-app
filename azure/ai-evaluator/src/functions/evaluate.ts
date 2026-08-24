@@ -34,17 +34,22 @@ export const evaluate: HttpHandler = async (
 
   const runId = body?.runId;
   const userId = body?.user_id;
-  const searchKey = body?.search_key?.trim() || undefined;
   if (!runId || !userId) {
     return json({ error: "runId and user_id are required" }, 400);
   }
 
+  /** Normalize a search key to the stored form: lowercase + underscores. */
+  const normalizeKey = (s: string): string =>
+    s.trim().toLowerCase().replace(/\s+/g, "_");
+
   const sb = getSupabase();
   try {
-    // 1. The run must exist and belong to this user.
+    // 1. The run must exist and belong to this user. The search key is read
+    //    from the RUN ROW (source of truth) — never trusted from the client,
+    //    which avoids the scrape-vs-evaluate keyword mismatch entirely.
     const { data: run, error: runErr } = await sb
       .from("pipeline_runs")
-      .select("id, status, evaluation_status")
+      .select("id, status, evaluation_status, search_key")
       .eq("id", runId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -55,6 +60,12 @@ export const evaluate: HttpHandler = async (
     if (!run) {
       return json({ error: "Run not found" }, 404);
     }
+
+    // Prefer the run row's stored search_key; fall back to a normalized
+    // client-supplied key (defensive — old clients may still send it).
+    const searchKey =
+      (run.search_key ?? "").trim() ||
+      (body?.search_key ? normalizeKey(body.search_key) : undefined);
 
     // 2. Evaluation only happens once scraping is finished.
     if (run.status !== "completed") {

@@ -24,6 +24,7 @@ import {
   runJobUpserted,
   runStatusUpdated,
   runSucceeded,
+  runSummaryUpdated,
 } from "@/state/global/slice/runSlice";
 import type { RootState } from "@/state/global/store";
 import type {
@@ -268,14 +269,24 @@ export function useRealtimeRun(enabled = true) {
             totalJobs?: number;
             processedJobs?: number;
             failedJobs?: number;
+            fitJobs?: number;
+            notFitJobs?: number;
+            remainingJobs?: number;
             activeBatches?: number;
-            batches?: EvaluationRunRow[];
+            batches?: (Partial<EvaluationRunRow> & {
+              fitJobs?: number;
+              notFitJobs?: number;
+              remainingJobs?: number;
+            })[];
           };
         }) => {
           if (!data?.ok) return;
 
-          // Aggregate counts across all runs → the navbar badges.
-          if (data.summary) dispatch(runCountsUpdated(data.summary));
+          // Aggregate counts across all runs → the navbar badges. Kept in a
+          // SEPARATE slice field (`summary`) so it never overwrites the
+          // active run's `counts` — otherwise the live card would show
+          // lifetime totals ("615 new") instead of this run's numbers.
+          if (data.summary) dispatch(runSummaryUpdated(data.summary));
 
           // If this event is for the active run, surface the run-level
           // funnel + per-board state + evaluation state live.
@@ -299,13 +310,31 @@ export function useRealtimeRun(enabled = true) {
                 );
               }
               if (data.evaluation.batches?.length) {
-                dispatch(evaluationRunsUpdated(data.evaluation.batches));
+                // Map the socket's camelCase fit/not-fit/remaining into the
+                // Redux snake_case shape used by the progress table.
+                dispatch(
+                  evaluationRunsUpdated(
+                    data.evaluation.batches.map(
+                      (b) =>
+                        ({
+                          ...b,
+                          id: b.id ?? "",
+                          fit_jobs: b.fitJobs ?? 0,
+                          not_fit_jobs: b.notFitJobs ?? 0,
+                          remaining_jobs: b.remainingJobs ?? 0,
+                        }) as EvaluationRunRow,
+                    ),
+                  ),
+                );
               }
             }
           }
 
           // Run status → human phase. Map backend statuses to our phase.
-          if (data.status) {
+          // Only applied when a run is actually being tracked in Redux —
+          // otherwise a stale `stats` event for an old run would light up a
+          // phantom live card after a page reload (when Redux runId is null).
+          if (data.status && runIdRef.current) {
             const status = data.status as PipelineRunStatus;
             if (status === "queued") dispatch(runStatusUpdated("queued"));
             else if (status === "scraping")

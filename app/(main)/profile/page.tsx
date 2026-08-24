@@ -18,43 +18,22 @@ export default async function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      {/* Page header */}
-      <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center shrink-0">
-            <svg
-              className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-              />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50 font-display">
-              Profile
-            </h1>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Manage your resume for automated applications
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="max-w-2xl mx-auto px-4 sm:px-8 py-10 space-y-8">
+      <header>
+        <p className="eyebrow">Account</p>
+        <h1 className="mt-2 text-3xl font-display font-semibold tracking-tight text-[var(--ink)]">
+          Profile
+        </h1>
+        <p className="mt-2 text-sm text-[var(--ink-soft)]">
+          Manage your resume — the source the AI scores every job against.
+        </p>
+      </header>
 
-      <main className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
-        <ResumePanel
-          userId={result.userId}
-          fileName={result.fileName}
-          signedUrl={result.signedUrl}
-        />
-      </main>
+      <ResumePanel
+        userId={result.userId}
+        fileName={result.fileName}
+        signedUrl={result.signedUrl}
+      />
     </div>
   );
 }
