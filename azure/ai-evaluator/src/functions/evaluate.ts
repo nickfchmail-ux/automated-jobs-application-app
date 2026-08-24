@@ -67,8 +67,11 @@ export const evaluate: HttpHandler = async (
       (run.search_key ?? "").trim() ||
       (body?.search_key ? normalizeKey(body.search_key) : undefined);
 
-    // 2. Evaluation only happens once scraping is finished.
-    if (run.status !== "completed") {
+    // 2. When a search key is provided, the evaluator runs ACCOUNT-WIDE (all
+    //    unevaluated jobs with that key across every run) — it does NOT need
+    //    this specific run to be "completed". So only enforce the run-status
+    //    gate when evaluating run-scoped (no key).
+    if (!searchKey && run.status !== "completed") {
       const active = ["queued", "scraping", "processing", "retrying"].includes(
         run.status,
       );
@@ -82,7 +85,10 @@ export const evaluate: HttpHandler = async (
       );
     }
 
-    // 3. Don't restart evaluation that's already running or done.
+    // 3. Don't restart evaluation that's already running or done. For the
+    //    account-wide (keyed) case, "done" means no unevaluated jobs remain —
+    //    allow re-running so the user can match a different search key from
+    //    the same run. Only block an actively-running evaluation.
     if (
       run.evaluation_status === "evaluating" ||
       run.evaluation_status === "queued"

@@ -22,6 +22,19 @@ export const evaluateStatus: HttpHandler = async (
 
   const sb = getSupabase();
   try {
+    // The batches may be account-wide (evaluating a search key across runs),
+    // so we need the run's user_id to query the jobs that batch actually
+    // touched, regardless of which run they live in.
+    const { data: runRow, error: runErr } = await sb
+      .from("pipeline_runs")
+      .select("user_id")
+      .eq("id", runId)
+      .maybeSingle();
+    if (runErr) {
+      context.error(`evaluateStatus run query failed: ${runErr.message}`);
+    }
+    const userId = runRow?.user_id;
+
     const { data, error } = await sb
       .from("evaluation_runs")
       .select("*")
@@ -32,36 +45,57 @@ export const evaluateStatus: HttpHandler = async (
       return json({ error: error.message }, 500);
     }
 
-    // Fetch this run's jobs so we can compute fit / not-fit / remaining per
-    // batch (mirrors the backend wsPush.ts getEvaluationState).
-    const { data: jobs, error: jobsErr } = await sb
-      .from("jobs")
-      .select("search_key, fit, fit_score")
-      .eq("pipeline_run_id", runId);
+    // Fetch the user's jobs for the batch keyword (account-wide) so fit /
+    // not-fit / remaining match the batch's total even when the batch spans
+    // multiple runs. A job counts toward a batch if it was touched by that
+    // batch: scored at/after the batch's created_at, or still unscored.
+    const { data: jobs, error: jobsErr } = userId
+      ? await sb
+          .from("jobs")
+          .select("search_key, fit, fit_score, updated_at")
+          .eq("user_id", userId)
+          .in("status", ["completed", "analysed"])
+      : { data: null, error: null };
     if (jobsErr) {
       context.error(`evaluateStatus jobs query failed: ${jobsErr.message}`);
     }
 
-    const fitByKey = new Map<string, number>();
-    const notFitByKey = new Map<string, number>();
-    const remainingByKey = new Map<string, number>();
-    for (const j of (jobs ?? []) as {
+    const jobsForUser = (jobs ?? []) as {
       search_key: string | null;
       fit: boolean | null;
       fit_score: number | null;
-    }[]) {
-      const key = String(j.search_key ?? "general").trim().toLowerCase();
-      if (j.fit_score === null) {
-        remainingByKey.set(key, (remainingByKey.get(key) ?? 0) + 1);
-      } else if (j.fit === true) {
-        fitByKey.set(key, (fitByKey.get(key) ?? 0) + 1);
-      } else if (j.fit === false) {
-        notFitByKey.set(key, (notFitByKey.get(key) ?? 0) + 1);
-      }
-    }
+      updated_at: string | null;
+    }[];
 
     const batches = (data ?? []).map((row) => {
-      const key = String(row.keyword ?? "general").trim().toLowerCase();
+      const key = String(row.keyword ?? "general")
+        .trim()
+        .toLowerCase();
+      const batchStart = row.created_at
+        ? new Date(row.created_at).getTime()
+        : 0;
+
+      let fit = 0;
+      let notFit = 0;
+      let remaining = 0;
+      for (const j of jobsForUser) {
+        if (
+          String(j.search_key ?? "general")
+            .trim()
+            .toLowerCase() !== key
+        )
+          continue;
+        // Only jobs touched by THIS batch: scored at/after batch start, or
+        // still unscored (they belong to the current in-progress batch).
+        const touched =
+          j.fit_score === null ||
+          (j.updated_at && new Date(j.updated_at).getTime() >= batchStart);
+        if (!touched) continue;
+        if (j.fit_score === null) remaining++;
+        else if (j.fit === true) fit++;
+        else if (j.fit === false) notFit++;
+      }
+
       return {
         id: row.id,
         keyword: row.keyword,
@@ -69,9 +103,9 @@ export const evaluateStatus: HttpHandler = async (
         totalJobs: row.total_jobs,
         processedJobs: row.processed_jobs,
         failedJobs: row.failed_jobs,
-        fitJobs: fitByKey.get(key) ?? 0,
-        notFitJobs: notFitByKey.get(key) ?? 0,
-        remainingJobs: remainingByKey.get(key) ?? 0,
+        fitJobs: fit,
+        notFitJobs: notFit,
+        remainingJobs: remaining,
         lastError: row.last_error,
         updatedAt: row.updated_at,
       };
@@ -87,18 +121,21 @@ export const evaluateStatus: HttpHandler = async (
       (b) => b.status === "evaluating" || b.status === "queued",
     ).length;
 
-    return json({
-      ok: true,
-      runId,
-      total,
-      processed,
-      failed,
-      fit,
-      notFit,
-      remaining,
-      activeBatches: active,
-      batches,
-    }, 200);
+    return json(
+      {
+        ok: true,
+        runId,
+        total,
+        processed,
+        failed,
+        fit,
+        notFit,
+        remaining,
+        activeBatches: active,
+        batches,
+      },
+      200,
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error";
     context.error(`evaluateStatus failed: ${msg}`);
