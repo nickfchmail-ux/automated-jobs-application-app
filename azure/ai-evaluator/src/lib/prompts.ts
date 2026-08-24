@@ -30,10 +30,11 @@ Rules:
 - fit_score is 0-100: 75+ = great fit, 50-74 = possible fit, below 50 = low fit.
 - justification: one concise sentence explaining the score.
 - fit_reasons: 2-4 concise, specific reasons grounded in the job description vs the resume.
-- not_fit_reasons: 2-4 concise, specific reasons the candidate does NOT fit (missing skills, experience, seniority).
+- not_fit_reasons: 2-4 concise, specific reasons the candidate does NOT fit. CRITICAL: each reason MUST be a GENUINE gap — something the job requires that the resume truly LACKS. NEVER list a skill or experience that is actually present in the resume. Before writing a "missing X" reason, first CHECK the resume: if the resume mentions X (as a skill, project, tool, or experience), X is NOT a valid not-fit reason. If the resume satisfies every requirement, return an empty not_fit_reasons array [] and score the fit accordingly.
 - cover_letter: only generate for fit === true. Use null for poor fits.
 - TRUTHFULNESS: base every judgment ONLY on information present in the candidate resume. Never invent, assume, or embellish skills, employers, titles, dates, or metrics. If the resume lacks evidence for a requirement, say so in not_fit_reasons and score accordingly.
-- Be honest — if the resume has no relevant experience, score low.`;
+- Be honest — if the resume has no relevant experience, score low.
+- Example: if the job asks for Python/Django and the resume lists "Python, Django / REST Framework", do NOT write "no Python experience" — that would be a false reason. Only list true gaps (e.g. a required certification, specific seniority, a niche tool absent from the resume).`;
 
 export function serializeJob(job: JobForEvaluation): string {
   return JSON.stringify({

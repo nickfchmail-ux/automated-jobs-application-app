@@ -41,6 +41,19 @@ test("buildSingleJobPrompt: includes resume + job fields, trims raw_description"
   assert.ok(user.content.includes("React"));
 });
 
+test("buildSingleJobPrompt: not_fit_reasons must be GENUINE gaps (no false negatives)", () => {
+  const [sys] = buildSingleJobPrompt("resume", JOB);
+  const p = sys.content;
+  // It must instruct the model to never list skills that ARE in the resume.
+  assert.match(p, /GENUINE gap/);
+  assert.match(p, /NEVER list a skill or experience that is actually present/);
+  assert.match(p, /if the resume mentions X/);
+  assert.match(p, /return an empty not_fit_reasons array/);
+  // And give the exact example the user hit (Python/Django present → not a gap).
+  assert.match(p, /Python, Django \/ REST Framework/);
+  assert.match(p, /do NOT write "no Python experience"/);
+});
+
 test("buildResumePrompt: asks for resumeHtml only (documents)", () => {
   const [sys, user] = buildResumePrompt("resume text", JOB);
   assert.match(sys.content, /"resumeHtml"/);
