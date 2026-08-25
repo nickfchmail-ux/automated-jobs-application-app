@@ -54,7 +54,6 @@ export default function EvaluationStep() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
   const [evalRequesting, setEvalRequesting] = useState(false);
-  const [justStarted, setJustStarted] = useState(false);
   // Set when the user clicks "Back to match" — dismisses the completed
   // confirmation so the dropdown selector returns.
   const [dismissed, setDismissed] = useState(false);
@@ -286,7 +285,6 @@ export default function EvaluationStep() {
       return;
     }
     setEvalError(null);
-    setJustStarted(false);
     setDismissed(false);
     setEvalRequesting(true);
     dispatch(runEvaluating());
@@ -319,7 +317,6 @@ export default function EvaluationStep() {
       }
       // Success — tell the user clearly, and refresh the key list so the
       // just-matched key drops out once the evaluator finishes.
-      setJustStarted(true);
       void reload();
     });
   }
@@ -338,36 +335,33 @@ export default function EvaluationStep() {
   if (evaluationActive && !scopedDone && !dismissed) {
     return (
       <div className="space-y-4">
-        {justStarted && (
-          <div
-            role="status"
-            className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 px-4 py-3 text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2"
+        <div
+          role="status"
+          className="rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 px-4 py-3 text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2"
+        >
+          <svg
+            className="w-4 h-4 animate-spin motion-reduce:hidden"
+            fill="none"
+            viewBox="0 0 24 24"
           >
-            <svg
-              className="w-4 h-4 animate-spin motion-reduce:hidden"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            Matching started —{" "}
-            <strong className="font-semibold">{selectedKey?.keyword}</strong> (
-            {selectedKey?.unevaluated} job
-            {selectedKey?.unevaluated !== 1 ? "s" : ""}) is being scored now.
-          </div>
-        )}
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          Matching{" "}
+          <strong className="font-semibold">{selectedKey?.keyword}</strong> is
+          being scored now — this can take a minute.
+        </div>
         <EvaluationProgress activeKey={selected} runId={activeRunId} />
         {/* Always allow returning to the dropdown — even mid-run or when the
             live view would otherwise linger. */}

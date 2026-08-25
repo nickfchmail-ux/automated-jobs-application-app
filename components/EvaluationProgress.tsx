@@ -54,7 +54,58 @@ export default function EvaluationProgress({
     return true;
   });
 
-  if (evaluationRuns.length === 0) return null;
+  // A match is in-flight but no batches have landed yet (the table was just
+  // cleared for a NEW match and the evaluator hasn't created rows/queued the
+  // Service Bus messages). Show a clear "starting…" panel instead of nothing
+  // so the user always knows evaluation is running.
+  if (evaluationRuns.length === 0) {
+    if (evaluationStatus === "evaluating" || evaluationStatus === "queued") {
+      return (
+        <section
+          aria-label="AI evaluation progress"
+          className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden"
+        >
+          <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-3">
+            <span className="relative flex w-2.5 h-2.5" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75 motion-safe:animate-ping" />
+              <span className="relative inline-flex rounded-full w-2.5 h-2.5 bg-blue-500" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                Matching jobs to your resume
+              </h2>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                Starting your match — preparing the jobs to score…
+              </p>
+            </div>
+          </div>
+          <div className="px-5 py-6 flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+            <svg
+              className="w-4 h-4 animate-spin motion-reduce:hidden text-blue-500"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            <span>Getting the evaluator ready…</span>
+          </div>
+        </section>
+      );
+    }
+    return null;
+  }
 
   const active = evaluationRuns.filter(
     (r) => r.status === "evaluating" || r.status === "queued",
