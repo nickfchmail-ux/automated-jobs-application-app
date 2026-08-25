@@ -333,12 +333,11 @@ export async function generateResumeWithLLM(
   return withRetry(async () => {
     const completion = await chatCompletion(messages, {
       temperature: 0.4,
-      // A concise one-page resume is ~2500-3500 tokens of HTML. Keeping the
-      // budget at 4000 (not 6000/12000) means the model stops generating
-      // sooner → much faster. The prompt is also trimmed (skills/reqs only),
-      // so the whole call is quick.
-      maxTokens: 4000,
-      timeoutMs: 90_000,
+      // Concise ~1-page resume with condensed projects = ~2000-2800 tokens of
+      // HTML. Budgeting 3000 makes the model stop generating sooner → much
+      // faster. The prompt also trims the job context + condenses projects.
+      maxTokens: 3000,
+      timeoutMs: 60_000,
     });
     const content = completion.choices?.[0]?.message?.content;
     if (!content) throw new Error("LLM returned an empty response");

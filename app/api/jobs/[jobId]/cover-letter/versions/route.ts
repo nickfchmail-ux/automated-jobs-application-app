@@ -29,10 +29,7 @@ export async function GET(
     .from("cover-letters")
     .list("", { search: `${userId}-${jobId}` });
 
-  if (
-    error &&
-    (error as { message?: string }).message !== "Bucket not found"
-  ) {
+  if (error && (error as { message?: string }).message !== "Bucket not found") {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

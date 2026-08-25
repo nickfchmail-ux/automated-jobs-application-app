@@ -32,7 +32,10 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!job?.cover_letter) {
-    return NextResponse.json({ error: "No cover letter found." }, { status: 404 });
+    return NextResponse.json(
+      { error: "No cover letter found." },
+      { status: 404 },
+    );
   }
 
   return new NextResponse(String(job.cover_letter), {

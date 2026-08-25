@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Full-screen overlay for ONE document type (resume OR cover letter — never
@@ -31,20 +31,24 @@ export default function DocumentPreviewOverlay({
   onClose: () => void;
 }) {
   // Versions: array of { url, label } for this document type.
-  const [versions, setVersions] = useState<
-    { url: string; label: string }[]
-  >([]);
+  const [versions, setVersions] = useState<{ url: string; label: string }[]>(
+    [],
+  );
   const [activeIdx, setActiveIdx] = useState(0);
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Tracks the last successfully-loaded versions so a transient refetch error
+  // doesn't clear the nav or flash an error when we already have content.
+  const versionsRef = useRef<{ url: string; label: string }[]>([]);
 
   // Load the version list whenever the overlay opens.
   useEffect(() => {
     if (!open) return;
     let alive = true;
     setVersions([]);
+    versionsRef.current = [];
     setActiveIdx(0);
     setContent(null);
     setError(null);
@@ -54,26 +58,45 @@ export default function DocumentPreviewOverlay({
         ? `/api/resume/${jobId}/versions`
         : `/api/jobs/${jobId}/cover-letter/versions`;
 
-    fetch(listUrl, { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
-      .then((d) => {
+    async function loadVersions() {
+      try {
+        const res = await fetch(listUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const d = await res.json();
         if (!alive) return;
-        const list: { url: string; label: string }[] = Array.isArray(d?.versions)
+        const list: { url: string; label: string }[] = Array.isArray(
+          d?.versions,
+        )
           ? d.versions
           : [];
-        setVersions(list);
         if (list.length > 0) {
-          setActiveIdx(list.length - 1);
-        } else {
+          // Keep the current selection if it still exists, else jump to latest.
+          versionsRef.current = list;
+          setVersions(list);
+          setActiveIdx((prev) => (prev < list.length ? prev : list.length - 1));
+          setError(null);
+        } else if (!versionsRef.current.length) {
           setError("No generated version found.");
         }
-      })
-      .catch(() => {
-        if (alive) setError("Couldn't load the versions.");
-      });
+        // If the list is transiently empty but we already have versions, keep
+        // showing the last known versions (no error flash).
+      } catch {
+        // Transient failure — keep whatever versions we already loaded and
+        // only surface an error if we have NOTHING to show.
+        if (alive && versionsRef.current.length === 0) {
+          setError("Couldn't load the versions.");
+        }
+      }
+    }
+
+    void loadVersions();
+    // Auto-refresh so a newly-fine-tuned version (v2, …) appears without
+    // closing/reopening the overlay.
+    const interval = setInterval(loadVersions, 4000);
 
     return () => {
       alive = false;
+      clearInterval(interval);
     };
   }, [open, jobId, type]);
 
@@ -85,7 +108,9 @@ export default function DocumentPreviewOverlay({
     setError(null);
     const { url } = versions[activeIdx];
     fetch(url, { cache: "no-store" })
-      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))))
+      .then((res) =>
+        res.ok ? res.text() : Promise.reject(new Error(String(res.status))),
+      )
       .then((text) => {
         if (alive) setContent(text);
       })
@@ -99,8 +124,7 @@ export default function DocumentPreviewOverlay({
 
   async function copyActive() {
     if (!content) return;
-    const text =
-      type === "resume" ? stripToText(content) : content;
+    const text = type === "resume" ? stripToText(content) : content;
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -154,20 +178,22 @@ export default function DocumentPreviewOverlay({
     setDownloading(true);
     try {
       const { Document, Packer, Paragraph, TextRun } = await import("docx");
-      const paragraphs = content
-        .split("\n")
-        .map(
-          (line) =>
-            new Paragraph({
-              children: [new TextRun({ text: line.trim(), size: 24, font: "Calibri" })],
-              spacing: { after: 120 },
-            }),
-        );
+      const paragraphs = content.split("\n").map(
+        (line) =>
+          new Paragraph({
+            children: [
+              new TextRun({ text: line.trim(), size: 24, font: "Calibri" }),
+            ],
+            spacing: { after: 120 },
+          }),
+      );
       const doc = new Document({
         sections: [
           {
             properties: {
-              page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } },
+              page: {
+                margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+              },
             },
             children: [
               new Paragraph({
@@ -230,7 +256,10 @@ export default function DocumentPreviewOverlay({
             <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mr-2">
               {type === "resume" ? "Tailored Resume" : "Cover Letter"}
             </span>
-            {versions.length > 1 && (
+            {/* Version nav — ALWAYS shown (even with one version) so the user
+                always has a navigation touchpoint. After a fine-tune
+                regeneration a new version appears here (v1 | v2 | …). */}
+            {versions.length > 0 && (
               <div className="flex items-center gap-1">
                 {versions.map((v, i) => (
                   <button
@@ -259,8 +288,18 @@ export default function DocumentPreviewOverlay({
                 <span className="text-emerald-500">Copied!</span>
               ) : (
                 <>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
                   </svg>
                   Copy
                 </>
@@ -275,8 +314,18 @@ export default function DocumentPreviewOverlay({
                 <span>Exporting…</span>
               ) : (
                 <>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
                   </svg>
                   {type === "resume" ? "Download PDF" : "Download Word"}
                 </>
@@ -287,8 +336,18 @@ export default function DocumentPreviewOverlay({
               className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
               aria-label="Close"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -297,7 +356,9 @@ export default function DocumentPreviewOverlay({
         {/* Body */}
         <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900">
           {error ? (
-            <div className="flex items-center justify-center py-20 text-sm text-red-500">{error}</div>
+            <div className="flex items-center justify-center py-20 text-sm text-red-500">
+              {error}
+            </div>
           ) : type === "resume" ? (
             content ? (
               <iframe

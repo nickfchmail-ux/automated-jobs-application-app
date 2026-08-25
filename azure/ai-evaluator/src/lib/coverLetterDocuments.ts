@@ -81,9 +81,7 @@ export async function storeCoverLetterVersion(params: {
         { public: true },
       );
       if (createErr) {
-        throw new Error(
-          `Failed to upload cover letter: ${uploadErr.message}`,
-        );
+        throw new Error(`Failed to upload cover letter: ${uploadErr.message}`);
       }
       const retry = await sb.storage
         .from(COVER_LETTER_BUCKET)
@@ -98,7 +96,9 @@ export async function storeCoverLetterVersion(params: {
       }
     }
 
-    const { data } = sb.storage.from(COVER_LETTER_BUCKET).getPublicUrl(fileName);
+    const { data } = sb.storage
+      .from(COVER_LETTER_BUCKET)
+      .getPublicUrl(fileName);
     return { url: data.publicUrl, fileName };
   });
 }
