@@ -23,6 +23,7 @@ import type {
   JobForEvaluation,
 } from "../shared/types.js";
 import { generateCoverLetterWithLLM, generateResumeWithLLM } from "./ai.js";
+import { storeCoverLetterVersion } from "./coverLetterDocuments.js";
 import { buildCoverLetterPrompt, buildResumePrompt } from "./prompts.js";
 import { fetchResumeText, sanitizeResume } from "./resume.js";
 import { storeGeneratedResume } from "./resumeDocuments.js";
@@ -180,6 +181,16 @@ export async function generateCoverLetterForJob(
   if (!coverLetter.trim()) {
     throw new Error("LLM returned an empty cover letter");
   }
+
+  // Store this generation as its own VERSION (v1, v2, …) so the overlay's
+  // version nav can flip between the original and fine-tuned letters.
+  await storeCoverLetterVersion({
+    userId,
+    jobId,
+    letter: coverLetter,
+  }).catch((e) => {
+    log(`cover letter version store failed (non-fatal): ${e}`);
+  });
 
   const sb = getSupabase();
   const { error: updErr } = await sb

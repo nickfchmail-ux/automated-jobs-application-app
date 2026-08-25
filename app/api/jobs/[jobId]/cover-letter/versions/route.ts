@@ -5,14 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 /**
  * GET /api/jobs/[jobId]/cover-letter/versions
  *
- * Returns the generated cover letter version(s) for a job, scoped to the
- * authenticated owner. The current implementation stores the cover letter
- * inline on the `jobs` row (latest wins), so this returns a single version
- * (v1). The overlay hides the version nav when there is only one.
- *
- * NOTE: multi-version cover letters are not stored yet — if you want to keep
- * each fine-tuned cover letter as a distinct version, the backend worker must
- * persist each generation (e.g. in storage like the resume does).
+ * Lists all generated cover-letter VERSIONS for a job (original + each
+ * fine-tuned regeneration), scoped to the authenticated user. Each version is
+ * a file in the `cover-letters` bucket named `<userId>-<jobId>-v<N>.txt`.
+ * Falls back to the latest inline `jobs.cover_letter` (v1) if no versioned
+ * files exist yet (legacy generations).
  */
 export async function GET(
   _req: NextRequest,
@@ -27,28 +24,55 @@ export async function GET(
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }
 
-  const { data: job, error } = await supabase
-    .from("jobs")
-    .select("cover_letter, cover_letter_status")
-    .eq("id", jobId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const prefix = `${userId}-${jobId}-v`;
+  const { data: files, error } = await supabase.storage
+    .from("cover-letters")
+    .list("", { search: `${userId}-${jobId}` });
 
-  if (error) {
+  if (
+    error &&
+    (error as { message?: string }).message !== "Bucket not found"
+  ) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (!job?.cover_letter) {
-    return NextResponse.json({ error: "No cover letter found." }, { status: 404 });
+
+  let versions = (files ?? [])
+    .filter((f) => f.name.startsWith(prefix) && f.name.endsWith(".txt"))
+    .map((f) => {
+      const m = f.name.match(/-v(\d+)\.txt$/i);
+      const n = m ? parseInt(m[1], 10) : 0;
+      const { data } = supabase.storage
+        .from("cover-letters")
+        .getPublicUrl(f.name);
+      return { url: data.publicUrl, label: `v${n}`, version: n };
+    })
+    .sort((a, b) => a.version - b.version);
+
+  // No versioned files yet — fall back to the latest inline letter (legacy).
+  if (versions.length === 0) {
+    const { data: job, error: jErr } = await supabase
+      .from("jobs")
+      .select("cover_letter")
+      .eq("id", jobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!jErr && job?.cover_letter) {
+      versions = [
+        {
+          url: `/api/jobs/${jobId}/cover-letter/content`,
+          label: "v1",
+          version: 1,
+        },
+      ];
+    }
   }
 
-  // Single version — the content is returned via a dedicated fetch below.
-  return NextResponse.json({
-    versions: [
-      {
-        url: `/api/jobs/${jobId}/cover-letter/content`,
-        label: "v1",
-        version: 1,
-      },
-    ],
-  });
+  if (versions.length === 0) {
+    return NextResponse.json(
+      { error: "No cover letter found." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({ versions });
 }
