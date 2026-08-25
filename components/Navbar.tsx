@@ -209,14 +209,14 @@ export default function Navbar() {
 
   const shell = (
     <div className="h-full flex flex-col bg-[var(--surface)] border-r border-[var(--line)]">
-      {/* Brand — business logo */}
+      {/* Brand — business logo, full sidebar width */}
       <div className="px-4 pt-5 pb-2">
-        <Link href="/overview" className="flex items-center gap-2 shrink-0">
+        <Link href="/overview" className="block shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/JobSeek.png"
             alt="JobSeek"
-            className="w-[132px] h-11 object-contain"
+            className="w-full h-auto max-h-14 object-contain"
           />
         </Link>
       </div>
