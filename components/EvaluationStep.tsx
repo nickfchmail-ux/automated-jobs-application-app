@@ -368,7 +368,7 @@ export default function EvaluationStep() {
             {selectedKey?.unevaluated !== 1 ? "s" : ""}) is being scored now.
           </div>
         )}
-        <EvaluationProgress activeKey={selected} />
+        <EvaluationProgress activeKey={selected} runId={activeRunId} />
         {/* Always allow returning to the dropdown — even mid-run or when the
             live view would otherwise linger. */}
         <button

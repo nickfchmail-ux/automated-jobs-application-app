@@ -276,6 +276,7 @@ export function useRealtimeRun(enabled = true) {
             batches?: (Partial<EvaluationRunRow> & {
               // Backend sends camelCase for these — the UI reads snake_case
               // (total_jobs etc.), so the mapping below converts them.
+              pipelineRunId?: string | null;
               totalJobs?: number;
               processedJobs?: number;
               failedJobs?: number;
@@ -333,6 +334,7 @@ export function useRealtimeRun(enabled = true) {
                     (b) =>
                       ({
                         id: b.id ?? "",
+                        pipeline_run_id: b.pipelineRunId ?? "",
                         keyword: b.keyword ?? "",
                         status: b.status ?? "queued",
                         total_jobs: b.totalJobs ?? 0,

@@ -10,19 +10,22 @@ import { useSelector } from "react-redux";
  * evaluator microservice — the user sees which keyword is being matched
  * against their resume and how far through it is, in plain language.
  *
- * Only the batch for the ACTIVE search key is shown: the socket delivers the
- * user's account-wide batches (all keys), but fit/not-fit must be scoped to
- * the key currently being matched. `activeKey` is the normalized search key
- * (e.g. "web_developer"); when omitted (no match in flight), all batches are
- * shown.
+ * Only the batch for the CURRENT match is shown: the socket delivers the
+ * user's ACCOUNT-WIDE batches (all keys, all runs), but the panel must show
+ * just the key currently being matched — and crucially, when a NEW match
+ * starts it must NOT show stale batches from previous matches. So we scope
+ * by BOTH the active search key (`activeKey`) and the match's target run
+ * (`runId`). When either is omitted, the other filter still applies.
  *
  * Rows are grouped under a quiet header; no jargon. Rows fade in as batches
  * land (no motion under prefers-reduced-motion).
  */
 export default function EvaluationProgress({
   activeKey,
+  runId,
 }: {
   activeKey?: string;
+  runId?: string | null;
 }) {
   const allRuns = useSelector((s: RootState) => s.run.evaluationRuns);
   const evaluationStatus = useSelector(
@@ -30,19 +33,26 @@ export default function EvaluationProgress({
   );
   const jobStream = useSelector((s: RootState) => s.run.jobStream);
 
-  // Scope to the active search key: normalize the batch keyword the same way
-  // the evaluator does (lowercase + underscores), so a batch under ANY run
-  // for this key is shown while other keys' batches stay hidden.
+  // Scope to the active search key (normalize like the evaluator does) AND to
+  // the current match's run — so a new match never shows the previous match's
+  // completed batch (the account-wide socket list keeps old batches around).
   const normalizedKey = activeKey?.trim().toLowerCase().replace(/\s+/g, "_");
-  const evaluationRuns = normalizedKey
-    ? allRuns.filter((r) =>
-        String(r.keyword ?? "")
-          .trim()
-          .toLowerCase()
-          .replace(/\s+/g, "_")
-          .startsWith(normalizedKey),
-      )
-    : allRuns;
+  const evaluationRuns = allRuns.filter((r) => {
+    if (normalizedKey) {
+      const key = String(r.keyword ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "_");
+      if (!key.startsWith(normalizedKey)) return false;
+    }
+    if (runId) {
+      // Only batches belonging to the current match's run. Batches without a
+      // pipeline_run_id (e.g. socket fallback) are kept only when the key
+      // matched — the run-scoped poller replaces them with correct rows.
+      if (r.pipeline_run_id && r.pipeline_run_id !== runId) return false;
+    }
+    return true;
+  });
 
   if (evaluationRuns.length === 0) return null;
 
