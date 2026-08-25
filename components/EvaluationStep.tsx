@@ -55,12 +55,9 @@ export default function EvaluationStep() {
   const [evalError, setEvalError] = useState<string | null>(null);
   const [evalRequesting, setEvalRequesting] = useState(false);
   const [justStarted, setJustStarted] = useState(false);
-  // True once the user triggers a match THIS session. Guards the
-  // "All matched / was matched" confirmation so a STALE account-wide
-  // `completed` status (from a previous session or the socket's on-connect
-  // evaluation state) doesn't flash "All matched — 0 great fits" when the
-  // user just landed on the page.
-  const [didMatch, setDidMatch] = useState(false);
+  // Set when the user clicks "Back to match" — dismisses the completed
+  // confirmation so the dropdown selector returns.
+  const [dismissed, setDismissed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Authoritative fit count for the CURRENT match key — from the account-wide
@@ -135,13 +132,13 @@ export default function EvaluationStep() {
 
   /**
    * Leave the completed confirmation and return to the match dropdown.
-   * Resets the local `didMatch` flag so the "All matched" confirmation is
-   * dismissed and the normal selector (or the "nothing left to match"
-   * explanation) renders again, then refreshes the search keys so any
-   * newly-available key reappears in the dropdown.
+   * Sets `dismissed` so the "All matched" confirmation is hidden and the
+   * normal selector (or the "nothing left to match" explanation) renders
+   * again, then refreshes the search keys so any newly-available key
+   * reappears in the dropdown.
    */
   async function backToMatch() {
-    setDidMatch(false);
+    setDismissed(true);
     setEvalError(null);
     await refreshKeys();
   }
@@ -290,7 +287,7 @@ export default function EvaluationStep() {
     }
     setEvalError(null);
     setJustStarted(false);
-    setDidMatch(true);
+    setDismissed(false);
     setEvalRequesting(true);
     dispatch(runEvaluating());
 
@@ -371,17 +368,38 @@ export default function EvaluationStep() {
           </div>
         )}
         <EvaluationProgress activeKey={selected} />
+        {/* Always allow returning to the dropdown — even mid-run or when the
+            live view would otherwise linger. */}
+        <button
+          type="button"
+          onClick={backToMatch}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--ink-soft)] border border-[var(--line)] rounded-lg px-3 py-1.5 hover:bg-[var(--paper-soft)] transition-colors"
+        >
+          <svg
+            className="w-3.5 h-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M10 19l-7-7m0 0l7-7m-7 7h18"
+            />
+          </svg>
+          Back to match
+        </button>
       </div>
     );
   }
 
   // Evaluation just finished — show a clear "done" confirmation so the user
-  // never doubts the evaluation ran. Only when the user ACTUALLY triggered a
-  // match this session (a stale account-wide `completed` status on a fresh
-  // page load must not flash "All matched"). Uses the SCOPED batch terminal
-  // state rather than the global evaluationStatus so the "Back to match"
-  // button reliably appears once THIS key's batches are done.
-  if ((scopedDone || evaluationStatus === "completed") && didMatch) {
+  // never doubts the evaluation ran. `scopedDone` is based on the ACTUAL
+  // batch data for the matched key (not a stale account-wide status), so it's
+  // safe to show even on a fresh page load where the match already finished —
+  // the "Back to match" button is always available to return to the dropdown.
+  if (scopedDone && !dismissed) {
     return (
       <div className="space-y-4">
         {keys.length > 0 ? (
