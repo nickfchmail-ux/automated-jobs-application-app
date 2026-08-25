@@ -69,14 +69,22 @@ export default function EvaluationStep() {
   // confirmation instead of `counts.fit`. Note: `selected` may be "" while
   // keys are still loading, so fall back to summing the run's own batches.
   const selectedKeyNorm = selected.trim().toLowerCase().replace(/\s+/g, "_");
-  const completedFit = evaluationRuns
-    .filter((r) =>
-      selectedKeyNorm
-        ? (r.keyword ?? "").toLowerCase().replace(/\s+/g, "_") ===
-          selectedKeyNorm
-        : true,
-    )
-    .reduce((n, r) => n + (r.fit_jobs ?? 0), 0);
+  const scopedRuns = evaluationRuns.filter((r) =>
+    selectedKeyNorm
+      ? (r.keyword ?? "").toLowerCase().replace(/\s+/g, "_") ===
+        selectedKeyNorm
+      : true,
+  );
+  const completedFit = scopedRuns.reduce((n, r) => n + (r.fit_jobs ?? 0), 0);
+  // The scoped batches are the source of truth for "is this match done?" —
+  // the global `evaluationStatus` can stay "evaluating" (another key's batch
+  // active account-wide, or a stale socket event), which would otherwise keep
+  // the panel stuck on the live view with no "Back to match" button.
+  const scopedDone =
+    scopedRuns.length > 0 &&
+    scopedRuns.every(
+      (r) => r.status === "completed" || r.status === "failed",
+    );
 
   const defaultKey = useMemo(
     () => (keyword ? normalizeKey(keyword) : ""),
@@ -326,7 +334,10 @@ export default function EvaluationStep() {
   // keys that have not been evaluated posts."
 
   // Actively matching → show live per-key progress + the "started" cue.
-  if (evaluationActive) {
+  // Only while the scoped batches are still running — once they're done we
+  // drop into the completed view below (even if the global evaluationStatus
+  // still says evaluating due to another key's batch or a stale socket event).
+  if (evaluationActive && !scopedDone) {
     return (
       <div className="space-y-4">
         {justStarted && (
@@ -366,10 +377,11 @@ export default function EvaluationStep() {
 
   // Evaluation just finished — show a clear "done" confirmation so the user
   // never doubts the evaluation ran. Only when the user ACTUALLY triggered a
-  // match this session — a stale account-wide `completed` status (socket
-  // on-connect for previously-matched keys) must not flash "All matched"
-  // with "0 great fits" on a fresh page load.
-  if (evaluationStatus === "completed" && didMatch) {
+  // match this session (a stale account-wide `completed` status on a fresh
+  // page load must not flash "All matched"). Uses the SCOPED batch terminal
+  // state rather than the global evaluationStatus so the "Back to match"
+  // button reliably appears once THIS key's batches are done.
+  if ((scopedDone || evaluationStatus === "completed") && didMatch) {
     return (
       <div className="space-y-4">
         {keys.length > 0 ? (
