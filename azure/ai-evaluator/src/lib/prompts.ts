@@ -138,6 +138,38 @@ Rules:
 - NO hyperlinks: render URLs (LinkedIn, GitHub, portfolio, email) as visible plain text — never <a> tags — because hyperlinks are invisible when printed as PDF. Write them like "GitHub: github.com/user" not "<a href=...>".
 - Professional, A4 print-friendly, inline CSS, ready to send.`;
 
+/**
+ * TRIM the job context for the RESUME prompt.
+ *
+ * Resume generation reads the job through a large, multi-section resume, so a
+ * huge raw_description inflates the input tokens and makes the LLM slow. The
+ * resume only needs the job's key signals (title, company, location, salary,
+ * requirements, responsibilities, skills) — not the full raw HTML description.
+ * We cap `raw_description` to a few thousand chars; the cover-letter prompt
+ * keeps `serializeJobFull` (it needs the whole posting for a letter).
+ */
+export function serializeJobResume(job: JobForEvaluation): string {
+  return JSON.stringify({
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    salary: job.salary,
+    employment_type: job.employment_type,
+    experience_level: job.experience_level,
+    skills: job.skills,
+    responsibilities: job.responsibilities,
+    requirements: job.requirements,
+    benefits: job.benefits,
+    short_description: job.short_description,
+    about_company: job.about_company,
+    posted_date: job.posted_date,
+    // Cap the free-text description — enough context to tailor, not so much
+    // that the call is slow.
+    raw_description: (job.raw_description ?? "").slice(0, 4000),
+  });
+}
+
 export function buildResumePrompt(
   resumeText: string,
   job: JobForEvaluation,
@@ -146,7 +178,7 @@ export function buildResumePrompt(
     { role: "system", content: RESUME_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. REWRITE it so it is visibly tailored to THIS job: a custom professional summary naming this role, bullets rewritten to mirror the job's requirements/keywords, and the most relevant skills/experience listed first.\n2. Keep EVERY section and EVERY job/project/education entry and every hard fact (employers, titles, dates, certifications, project links). Compress older/less-relevant detail rather than dropping it.\n3. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
+      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (key details — title, requirements, responsibilities, skills, company):\n\n${serializeJobResume(job)}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. REWRITE it so it is visibly tailored to THIS job: a custom professional summary naming this role, bullets rewritten to mirror the job's requirements/keywords, and the most relevant skills/experience listed first.\n2. Keep EVERY section and EVERY job/project/education entry and every hard fact (employers, titles, dates, certifications, project links). Compress older/less-relevant detail rather than dropping it.\n3. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
     },
   ];
 }
