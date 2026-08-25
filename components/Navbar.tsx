@@ -8,10 +8,8 @@ import { useSelector } from "react-redux";
 
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import CloseIcon from "@mui/icons-material/Close";
 import InsightsIcon from "@mui/icons-material/Insights";
-import ListAltIcon from "@mui/icons-material/ListAlt";
 import MenuIcon from "@mui/icons-material/Menu";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import SearchIcon from "@mui/icons-material/Search";
@@ -40,7 +38,6 @@ export default function Navbar() {
   // separate from `run.counts` (the active run's funnel) so the live card
   // never shows lifetime totals.
   const fit = useSelector((s: RootState) => s.run.summary.fit ?? 0);
-  const notFit = useSelector((s: RootState) => s.run.summary.unfit ?? 0);
 
   const pathName = usePathname();
   const router = useRouter();
@@ -106,29 +103,6 @@ export default function Navbar() {
           badge: fit,
           icon: (a) => (
             <TuneIcon
-              className={
-                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
-              }
-            />
-          ),
-        },
-        {
-          href: "/jobs",
-          label: "All listings",
-          icon: (a) => (
-            <ListAltIcon
-              className={
-                a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
-              }
-            />
-          ),
-        },
-        {
-          href: "/saved",
-          label: "Saved",
-          badge: notFit,
-          icon: (a) => (
-            <BookmarkBorderIcon
               className={
                 a ? "text-[var(--accent-ink)]" : "text-[var(--ink-faint)]"
               }
@@ -235,20 +209,15 @@ export default function Navbar() {
 
   const shell = (
     <div className="h-full flex flex-col bg-[var(--surface)] border-r border-[var(--line)]">
-      {/* Brand */}
+      {/* Brand — business logo */}
       <div className="px-4 pt-5 pb-2">
-        <Link href="/overview" className="flex items-center gap-2.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white font-bold">
-            <span className="text-sm font-display">J</span>
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-bold text-[var(--ink)] font-display">
-              JobSeek
-            </p>
-            <p className="text-[11px] text-[var(--ink-faint)]">
-              Smart careers, simplified by AI
-            </p>
-          </div>
+        <Link href="/overview" className="flex items-center gap-2 shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/JobSeek.png"
+            alt="JobSeek"
+            className="w-[132px] h-11 object-contain"
+          />
         </Link>
       </div>
 

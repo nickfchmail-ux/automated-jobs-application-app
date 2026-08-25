@@ -53,6 +53,5 @@ export async function toggleInterestedAction(
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath("/matches");
-  revalidatePath("/saved");
   return { ok: true, interested_in: interestedIn };
 }

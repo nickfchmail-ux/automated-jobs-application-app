@@ -149,10 +149,10 @@ export default async function OverviewPage() {
         <p className="eyebrow">Pipeline</p>
         <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px overflow-hidden rounded-xl bg-[var(--line)]">
           {[
-            { label: "Scraped", value: total.scraped, href: "/jobs" },
+            { label: "Scraped", value: total.scraped, href: "/review" },
             { label: "Evaluated", value: total.evaluated, href: "/review" },
             { label: "Matches", value: total.matches, href: "/matches" },
-            { label: "Applied", value: total.applied, href: "/jobs" },
+            { label: "Applied", value: total.applied, href: "/matches" },
             {
               label: "Resumes built",
               value: total.resumeBuilt,
