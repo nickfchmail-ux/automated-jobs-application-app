@@ -132,11 +132,21 @@ HOW TO TAILOR (this is the whole point — do NOT just echo the source resume):
 - OPEN with a PROFESSIONAL SUMMARY written specifically for this role — name the role/industry and lead with the 2-3 strengths from the resume that match the posting (e.g. for a security role: IAM/access control, compliance, data handling, audits).
 - EVEN WHEN THE CANDIDATE LACKS DIRECT EXPERIENCE: find TRANSFERABLE skills in the source resume and reframe them for the target role. For a warehouse/logistics clerk role, reframe administrative/document/data skills (data entry, record-keeping, document processing, Excel/Word, phone/order handling, attention to detail, process support) into the role's language — never leave the summary or bullets as generic developer copy.
 - REORDER sections and list skills so the most relevant ones come first; keep the full skill set.
-- KEEP every section and every job/project/education entry — but compress or re-emphasize older/less-relevant entries rather than listing every original bullet verbatim (2-4 strong, tailored bullets per role is ideal).
+- WORK EXPERIENCE + EDUCATION: keep EVERY entry with all hard facts (employers, titles, date ranges, school, degree) and 2-4 strong tailored bullets per role.
+- PROJECTS: condense to a COMPACT list — one line each: project name, tech stack, and GitHub/live link (URL as visible text). Do NOT list every project bullet.
+- CERTIFICATIONS: keep them all, one line each.
 - Preserve every hard fact: employers, titles, date ranges, education, certifications, project names, links, and contact details. Never invent facts, metrics, employers, or skills.
+- KEEP THE WHOLE RESUME CONCISE (aim ~1 page) — brevity = faster generation.
+
+PROFESSIONAL QUALITY (write like a senior career coach, not a template):
+- Use STRONG ACTION VERBS to start every bullet: e.g. "Led", "Drove", "Streamlined", "Implemented", "Collaborated", "Resolved", "Automated". Avoid weak/static phrasing ("responsible for", "worked on", "helped").
+- QUANTIFY where the source allows: include concrete numbers, volumes, frequencies, or scopes the resume actually states (e.g. "validated 100+ claims", "managed due-diligence workflows for government subsidy schemes", "reduced manual effort"). NEVER invent numbers not present in the source.
+- Make each bullet SPECIFIC and RESULTS-oriented: what you did → for what purpose → what it achieved. Keep 1 line each (no run-on).
+- Keep the summary crisp (2-3 sentences), confident, and free of clichés.
+- Consistent, clean structure: clear section headings, tidy spacing, aligned dates (right side), readable 10.5-11.5px body text, generous but compact margins — a resume a hiring manager can skim in 10 seconds.
 
 Rules:
-- TRUTHFULNESS: every claim must trace to the candidate resume. Never fabricate.
+- TRUTHFULNESS: every claim must trace to the candidate resume. Never fabricate facts, metrics, employers, or skills.
 - NO hyperlinks: render URLs (LinkedIn, GitHub, portfolio, email) as visible plain text — never <a> tags — because hyperlinks are invisible when printed as PDF. Write them like "GitHub: github.com/user" not "<a href=...>".
 - Professional, A4 print-friendly, inline CSS, ready to send.`;
 
@@ -180,7 +190,7 @@ export function buildResumePrompt(
     { role: "system", content: RESUME_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (key details — title, requirements, responsibilities, skills, company):\n\n${serializeJobResume(job)}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. The final resume MUST read as if it was written FOR THIS JOB. Even when the candidate lacks direct experience, reframe their TRANSFERABLE skills (admin, data entry, document handling, record-keeping, computer skills, attention to detail, process support) into the target role's language. A reader must be able to tell which job this resume targets from the summary and first bullets alone.\n2. Custom professional summary naming this role; bullets rewritten to mirror the job's requirements/keywords; most relevant skills/experience listed first.\n3. Keep EVERY section and EVERY job/project/education entry and every hard fact (employers, titles, dates, certifications, project links). Compress older/less-relevant detail rather than dropping it.\n4. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
+      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (key details — title, requirements, responsibilities, skills, company):\n\n${serializeJobResume(job)}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. The final resume MUST read as if it was written FOR THIS JOB. Even when the candidate lacks direct experience, reframe their TRANSFERABLE skills (admin, data entry, document handling, record-keeping, computer skills, attention to detail, process support) into the target role's language. A reader must be able to tell which job this resume targets from the summary and first bullets alone.\n2. Custom professional summary naming this role; bullets rewritten to mirror the job's requirements/keywords; most relevant skills/experience listed first.\n3. WORK EXPERIENCE + EDUCATION: keep every entry with all hard facts and 2-4 strong tailored bullets. PROJECTS: condense to a compact one-line list (name + tech + link, URL as visible text) — do NOT expand every project bullet. CERTIFICATIONS: one line each.\n4. Keep the whole resume CONCISE (~1 page) — brevity speeds up generation.\n5. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
     },
   ];
 }
