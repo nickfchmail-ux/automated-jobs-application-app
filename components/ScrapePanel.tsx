@@ -281,9 +281,15 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         </form>
       </div>
 
-      {/* Live run card — hidden during evaluation; the Match card owns that
-          experience (progress table + per-keyword fit/not-fit). */}
-      {phase !== "evaluating" && <LiveRunCard />}
+      {/* Live run card — only while a search is ACTUALLY running. Once it's
+          done ("Done ✓") or hasn't started, there's nothing meaningful to
+          show — the Match card takes over for results. Hidden during
+          evaluation too (the Match card owns that experience). */}
+      {(phase === "queued" ||
+        phase === "scraping" ||
+        phase === "processing" ||
+        phase === "retrying" ||
+        phase === "starting") && <LiveRunCard />}
     </div>
   );
 }
