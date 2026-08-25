@@ -274,9 +274,15 @@ export function useRealtimeRun(enabled = true) {
             remainingJobs?: number;
             activeBatches?: number;
             batches?: (Partial<EvaluationRunRow> & {
+              // Backend sends camelCase for these — the UI reads snake_case
+              // (total_jobs etc.), so the mapping below converts them.
+              totalJobs?: number;
+              processedJobs?: number;
+              failedJobs?: number;
               fitJobs?: number;
               notFitJobs?: number;
               remainingJobs?: number;
+              lastError?: string | null;
             })[];
           };
         }) => {
@@ -316,18 +322,26 @@ export function useRealtimeRun(enabled = true) {
               );
             }
             if (data.evaluation.batches?.length) {
-              // Map the socket's camelCase fit/not-fit/remaining into the
-              // Redux snake_case shape used by the progress table.
+              // Map the socket's camelCase payload into the snake_case shape
+              // the progress table + EvaluationStep read. The spread alone is
+              // NOT enough — totalJobs/processedJobs/failedJobs stay camelCase
+              // and the UI reads total_jobs → shows 0 ("0 of 0 jobs matched",
+              // Total 0) and never reaches a terminal state it can act on.
               dispatch(
                 evaluationRunsUpdated(
                   data.evaluation.batches.map(
                     (b) =>
                       ({
-                        ...b,
                         id: b.id ?? "",
+                        keyword: b.keyword ?? "",
+                        status: b.status ?? "queued",
+                        total_jobs: b.totalJobs ?? 0,
+                        processed_jobs: b.processedJobs ?? 0,
+                        failed_jobs: b.failedJobs ?? 0,
                         fit_jobs: b.fitJobs ?? 0,
                         not_fit_jobs: b.notFitJobs ?? 0,
                         remaining_jobs: b.remainingJobs ?? 0,
+                        last_error: b.lastError ?? null,
                       }) as EvaluationRunRow,
                   ),
                 ),
