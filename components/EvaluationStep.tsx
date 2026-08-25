@@ -78,11 +78,10 @@ export default function EvaluationStep() {
   // match ran, falling back to the dropdown `selected` otherwise. This keeps
   // the completed confirmation + progress scoped to the right key even after
   // the matched key drops out of `keys` (no auto-advance).
-  const scopeKeyNorm =
-    (matchedKeyRef.current?.key ?? selected)
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "_");
+  const scopeKeyNorm = (matchedKeyRef.current?.key ?? selected)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
   const scopedRuns = evaluationRuns.filter((r) =>
     scopeKeyNorm
       ? (r.keyword ?? "").toLowerCase().replace(/\s+/g, "_") === scopeKeyNorm
@@ -95,9 +94,7 @@ export default function EvaluationStep() {
   // the panel stuck on the live view with no "Back to match" button.
   const scopedDone =
     scopedRuns.length > 0 &&
-    scopedRuns.every(
-      (r) => r.status === "completed" || r.status === "failed",
-    );
+    scopedRuns.every((r) => r.status === "completed" || r.status === "failed");
 
   const defaultKey = useMemo(
     () => (keyword ? normalizeKey(keyword) : ""),
@@ -365,11 +362,18 @@ export default function EvaluationStep() {
   // keys that have not been evaluated posts."
 
   // Actively matching → show live per-key progress + the "started" cue.
-  // Only while the scoped batches are still running — once they're done we
-  // drop into the completed view below (even if the global evaluationStatus
-  // still says evaluating due to another key's batch or a stale socket event).
-  // `!dismissed` lets the "Back to match" button exit this live view too.
-  if (evaluationActive && !scopedDone && !dismissed) {
+  // Only while a match is genuinely in-flight THIS session (the user clicked
+  // Match) OR there are scoped batches to show. On a page refresh the socket
+  // can report account-wide "evaluating" (some other batch active) with no
+  // in-flight match here — without this guard the panel would sit on
+  // "Starting your match…" forever even though nothing is running.
+  const matchInFlight = matchedKeyRef.current !== null;
+  if (
+    evaluationActive &&
+    !scopedDone &&
+    !dismissed &&
+    (matchInFlight || scopedRuns.length > 0)
+  ) {
     return (
       <div className="space-y-4">
         <div
