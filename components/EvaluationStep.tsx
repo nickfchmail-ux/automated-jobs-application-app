@@ -96,6 +96,12 @@ export default function EvaluationStep() {
     scopedRuns.length > 0 &&
     scopedRuns.every((r) => r.status === "completed" || r.status === "failed");
 
+  // True when the user actually started a match THIS session (vs. the socket
+  // merely reporting an account-wide "evaluating" status for some other key).
+  // Gates both the poller and the live view so a stale/foreign status can't
+  // keep firing network requests or showing a phantom "Starting…" panel.
+  const matchInFlight = matchedKeyRef.current !== null;
+
   const defaultKey = useMemo(
     () => (keyword ? normalizeKey(keyword) : ""),
     [keyword],
@@ -231,11 +237,19 @@ export default function EvaluationStep() {
   }, [evaluationStatus, activeRunId]);
 
   // ── Live progress poller (fallback to Realtime) ────────────────────
-  // While an evaluation is active, poll the evaluator's REST status + read
-  // `evaluation_runs` directly so the UI never freezes on "0 of 0 jobs"
+  // While the user's OWN match is active, poll the evaluator's REST status +
+  // read `evaluation_runs` directly so the UI never freezes on "0 of 0 jobs"
   // even if Supabase Realtime isn't delivering the table's changes.
+  // Gated on `matchInFlight` (or real scoped batches) so a STALE account-wide
+  // "evaluating" status can't fire a POST /api/evaluate/{id} every 3s while
+  // the user does nothing.
   useEffect(() => {
-    if (!evaluationActive || !activeRunId) return;
+    if (
+      !evaluationActive ||
+      !activeRunId ||
+      (!matchInFlight && scopedRuns.length === 0)
+    )
+      return;
     const id = activeRunId; // narrow to string for the async closure
     let disposed = false;
 
@@ -299,7 +313,7 @@ export default function EvaluationStep() {
       disposed = true;
       clearInterval(interval);
     };
-  }, [evaluationActive, activeRunId, evaluationStatus, dispatch]);
+  }, [evaluationActive, activeRunId, evaluationStatus, matchInFlight, scopedRuns, dispatch]);
 
   function handleMatch() {
     if (!selected) return;
@@ -367,7 +381,6 @@ export default function EvaluationStep() {
   // can report account-wide "evaluating" (some other batch active) with no
   // in-flight match here — without this guard the panel would sit on
   // "Starting your match…" forever even though nothing is running.
-  const matchInFlight = matchedKeyRef.current !== null;
   if (
     evaluationActive &&
     !scopedDone &&

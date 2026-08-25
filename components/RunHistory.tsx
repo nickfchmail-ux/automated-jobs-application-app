@@ -141,10 +141,10 @@ export default function RunHistory() {
       }
     }
     void load();
-    // Refresh so a run that was "In line…" settles to "Done ✓" (or a new run
-    // appears) without a page reload — the previous one-shot fetch left stale
-    // "Searching the job boards…" labels on finished runs.
-    const interval = setInterval(load, 20_000);
+    // Refresh occasionally so a run that was "In line…" settles to "Done ✓"
+    // (or a new run appears) without a page reload. Every 60s keeps the
+    // history fresh without hammering the server with POSTs while idle.
+    const interval = setInterval(load, 60_000);
     return () => {
       alive = false;
       clearInterval(interval);
