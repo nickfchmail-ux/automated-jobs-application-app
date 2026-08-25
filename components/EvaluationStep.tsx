@@ -58,17 +58,34 @@ export default function EvaluationStep() {
   // confirmation so the dropdown selector returns.
   const [dismissed, setDismissed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Captures the key the user ACTUALLY matched (its normalized key + display
+  // keyword + runId) at the moment Match is clicked. Survives the matched key
+  // dropping out of `keys` after completion, so the completed confirmation
+  // and the progress scoping always refer to the key that was matched — never
+  // to whatever the dropdown happens to show afterwards.
+  const matchedKeyRef = useRef<{
+    key: string;
+    keyword: string;
+    runId: string | null;
+  } | null>(null);
 
   // Authoritative fit count for the CURRENT match key — from the account-wide
   // socket/status `evaluationRuns` (the Redis funnel `counts.fit` is never
   // updated by the evaluator, so it stays 0). Used by the completed
-  // confirmation instead of `counts.fit`. Note: `selected` may be "" while
-  // keys are still loading, so fall back to summing the run's own batches.
-  const selectedKeyNorm = selected.trim().toLowerCase().replace(/\s+/g, "_");
+  // confirmation instead of `counts.fit`.
+  //
+  // The scope is the key that was ACTUALLY matched (matchedKeyRef) when a
+  // match ran, falling back to the dropdown `selected` otherwise. This keeps
+  // the completed confirmation + progress scoped to the right key even after
+  // the matched key drops out of `keys` (no auto-advance).
+  const scopeKeyNorm =
+    (matchedKeyRef.current?.key ?? selected)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
   const scopedRuns = evaluationRuns.filter((r) =>
-    selectedKeyNorm
-      ? (r.keyword ?? "").toLowerCase().replace(/\s+/g, "_") ===
-        selectedKeyNorm
+    scopeKeyNorm
+      ? (r.keyword ?? "").toLowerCase().replace(/\s+/g, "_") === scopeKeyNorm
       : true,
   );
   const completedFit = scopedRuns.reduce((n, r) => n + (r.fit_jobs ?? 0), 0);
@@ -90,13 +107,17 @@ export default function EvaluationStep() {
     evaluationStatus === "queued" || evaluationStatus === "evaluating";
 
   // Default the selection to the current search's key (or the first key with
-  // unevaluated posts). Re-resolve when the key list changes.
+  // unevaluated posts) — but ONLY on initial load, when the user hasn't made
+  // a choice yet. Once a key is selected (or a match was run), NEVER silently
+  // advance to another key: after a match completes, `keys` reloads and the
+  // matched key drops out — auto-selecting `keys[0]` would switch the dropdown
+  // to the NEXT key behind the user's back (the "strange behavior after the
+  // first match"). The user picks the next key explicitly.
   useEffect(() => {
-    setSelected((prev) => {
-      if (prev && keys.some((k) => k.searchKey === prev)) return prev;
-      const current = keys.find((k) => k.searchKey === defaultKey);
-      return (current ?? keys[0])?.searchKey ?? "";
-    });
+    if (selected) return; // user has chosen — don't override
+    const current = keys.find((k) => k.searchKey === defaultKey);
+    setSelected((current ?? keys[0])?.searchKey ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keys, defaultKey]);
 
   // Close the dropdown on outside click.
@@ -139,12 +160,20 @@ export default function EvaluationStep() {
   async function backToMatch() {
     setDismissed(true);
     setEvalError(null);
+    // Start fresh — clear the matched-key memory so the dropdown selection
+    // governs the next match, and reset selection so the next key defaults.
+    matchedKeyRef.current = null;
+    setSelected("");
     await refreshKeys();
   }
 
-  // The run whose evaluation state we track — the active run, else the
-  // selected key's run (survives page reload when Redux has no active run).
-  const activeRunId = runId ?? selectedKey?.runId ?? null;
+  // The run whose evaluation state we track. When a key is selected, its OWN
+  // run is the one the evaluator targets (account-wide matching creates the
+  // batch under that key's run), so it must take priority over the global
+  // Redux runId — otherwise the progress table would filter to the wrong run
+  // and show no (or all) batches. Falls back to the global run when no key
+  // is selected (survives page reload when Redux has no active run).
+  const activeRunId = selectedKey?.runId ?? runId ?? null;
 
   // Auto-refresh keys once evaluation reaches a terminal state — this drops
   // the just-matched key (now fully scored) and surfaces any remaining keys.
@@ -277,9 +306,11 @@ export default function EvaluationStep() {
 
   function handleMatch() {
     if (!selected) return;
-    // Use the selected key's own runId (account-wide) so matching works even
-    // after a page reload when there's no active run in Redux.
-    const targetRunId = runId ?? selectedKey?.runId ?? null;
+    // Use the SELECTED key's own runId (account-wide) so matching targets the
+    // right run even after a page reload when there's no active run in Redux.
+    // The global `runId` must NOT take priority — it may point at a different
+    // (latest) run than the key being matched.
+    const targetRunId = selectedKey?.runId ?? runId ?? null;
     if (!targetRunId) {
       setEvalError("We couldn't find a search to match against.");
       return;
@@ -315,8 +346,14 @@ export default function EvaluationStep() {
         }
         return;
       }
-      // Success — tell the user clearly, and refresh the key list so the
-      // just-matched key drops out once the evaluator finishes.
+      // Success — remember the key that was matched (it will drop out of
+      // `keys` on the reload below), and refresh the key list so the
+      // just-matched key disappears once the evaluator finishes.
+      matchedKeyRef.current = {
+        key: selected,
+        keyword: selectedKey?.keyword ?? selected.replace(/_/g, " "),
+        runId: targetRunId,
+      };
       void reload();
     });
   }
@@ -405,7 +442,9 @@ export default function EvaluationStep() {
               className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300"
             >
               <strong className="font-semibold">
-                {selectedKey?.keyword ?? "Your search"}
+                {matchedKeyRef.current?.keyword ??
+                  selectedKey?.keyword ??
+                  "Your search"}
               </strong>{" "}
               was matched. {completedFit} great fit
               {completedFit !== 1 ? "s" : ""} ready to review.
@@ -581,6 +620,10 @@ export default function EvaluationStep() {
                         {selectedKey.unevaluated !== 1 ? "s" : ""} to match
                       </span>
                     </>
+                  ) : keys.length > 0 ? (
+                    <span className="text-[var(--ink-faint)]">
+                      Select a key to match
+                    </span>
                   ) : (
                     <span className="text-[var(--ink-faint)]">
                       No search keys with unevaluated jobs
