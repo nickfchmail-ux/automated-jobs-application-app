@@ -208,7 +208,7 @@ export default function Navbar() {
   );
 
   const shell = (
-    <div className="h-full flex flex-col bg-[var(--paper-soft)] border-r border-[var(--line)]">
+    <div className="h-full flex flex-col bg-[var(--accent-soft)] border-r border-[var(--line)]">
       {/* Brand — business logo, full sidebar width */}
       <div className="px-4 pt-5 pb-2">
         <Link href="/overview" className="block shrink-0">
