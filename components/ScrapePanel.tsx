@@ -2,7 +2,6 @@
 
 import { startScrapeAction } from "@/app/actions/scrape";
 import LiveRunCard from "@/components/LiveRunCard";
-import RealtimeJobStream from "@/components/RealtimeJobStream";
 import { useRealtimeRun } from "@/hooks/useRealtimeRun";
 import {
   runQueued,
@@ -23,9 +22,7 @@ const BOARD_OPTIONS: { value: string; label: string }[] = [
 
 export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
   const dispatch = useDispatch();
-  const { phase, runId, jobStream, counts } = useSelector(
-    (s: RootState) => s.run,
-  );
+  const { phase, jobStream } = useSelector((s: RootState) => s.run);
   const [keyword, setKeyword] = useState("");
   const [pages, setPages] = useState(1);
   const [boards, setBoards] = useState<string[]>(() => [
@@ -287,25 +284,6 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
       {/* Live run card — hidden during evaluation; the Match card owns that
           experience (progress table + per-keyword fit/not-fit). */}
       {phase !== "evaluating" && <LiveRunCard />}
-
-      {/* Live job stream */}
-      {(phase === "queued" ||
-        phase === "scraping" ||
-        phase === "processing" ||
-        phase === "retrying" ||
-        phase === "completed") && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-zinc-700 dark:text-zinc-300">
-              New this search
-            </h2>
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">
-              {counts.unique || 0} new
-            </span>
-          </div>
-          <RealtimeJobStream jobs={jobStream} total={counts.unique || 0} />
-        </div>
-      )}
     </div>
   );
 }

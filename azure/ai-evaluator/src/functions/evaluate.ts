@@ -66,11 +66,14 @@ export const evaluate: HttpHandler = async (
       return json({ error: "Run not found" }, 404);
     }
 
-    // Prefer the run row's stored search_key; fall back to a normalized
-    // client-supplied key (defensive — old clients may still send it).
-    const searchKey =
-      (run.search_key ?? "").trim() ||
-      (body?.search_key ? normalizeKey(body.search_key) : undefined);
+    // The client always sends the search_key it wants to match (picked from a
+    // dropdown derived from the user's real jobs). Honor it — it lets the user
+    // match a DIFFERENT key than this run's own keyword via the same entry
+    // point. Fall back to the run's stored key only when the client omitted
+    // one (defensive).
+    const searchKey = body?.search_key
+      ? normalizeKey(body.search_key)
+      : (run.search_key ?? "").trim() || undefined;
 
     // 2. When a search key is provided, the evaluator runs ACCOUNT-WIDE (all
     //    unevaluated jobs with that key across every run) — it does NOT need

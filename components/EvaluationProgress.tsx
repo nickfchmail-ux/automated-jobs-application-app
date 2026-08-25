@@ -10,15 +10,39 @@ import { useSelector } from "react-redux";
  * evaluator microservice — the user sees which keyword is being matched
  * against their resume and how far through it is, in plain language.
  *
+ * Only the batch for the ACTIVE search key is shown: the socket delivers the
+ * user's account-wide batches (all keys), but fit/not-fit must be scoped to
+ * the key currently being matched. `activeKey` is the normalized search key
+ * (e.g. "web_developer"); when omitted (no match in flight), all batches are
+ * shown.
+ *
  * Rows are grouped under a quiet header; no jargon. Rows fade in as batches
  * land (no motion under prefers-reduced-motion).
  */
-export default function EvaluationProgress() {
-  const evaluationRuns = useSelector((s: RootState) => s.run.evaluationRuns);
+export default function EvaluationProgress({
+  activeKey,
+}: {
+  activeKey?: string;
+}) {
+  const allRuns = useSelector((s: RootState) => s.run.evaluationRuns);
   const evaluationStatus = useSelector(
     (s: RootState) => s.run.evaluationStatus,
   );
   const jobStream = useSelector((s: RootState) => s.run.jobStream);
+
+  // Scope to the active search key: normalize the batch keyword the same way
+  // the evaluator does (lowercase + underscores), so a batch under ANY run
+  // for this key is shown while other keys' batches stay hidden.
+  const normalizedKey = activeKey?.trim().toLowerCase().replace(/\s+/g, "_");
+  const evaluationRuns = normalizedKey
+    ? allRuns.filter((r) =>
+        String(r.keyword ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_")
+          .startsWith(normalizedKey),
+      )
+    : allRuns;
 
   if (evaluationRuns.length === 0) return null;
 

@@ -40,7 +40,7 @@ function normalizeKey(s: string): string {
 export default function EvaluationStep() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { phase, runId, keyword, counts, evaluationStatus } = useSelector(
+  const { runId, keyword, counts, evaluationStatus } = useSelector(
     (s: RootState) => s.run,
   );
   const [, startTransition] = useTransition();
@@ -235,7 +235,6 @@ export default function EvaluationStep() {
       disposed = true;
       clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evaluationActive, activeRunId, evaluationStatus, dispatch]);
 
   function handleMatch() {
@@ -258,9 +257,18 @@ export default function EvaluationStep() {
       });
       setEvalRequesting(false);
       if (!result.ok) {
+        // Roll the evaluation state back so the selector (dropdown + Match
+        // button) reappears — otherwise `runEvaluating()` left the status
+        // at "evaluating" and the user would be stuck on the progress view
+        // with an error, forced to reload to retry.
+        dispatch(evaluationStatusUpdated("none"));
         if (/resume/i.test(result.error)) {
           setEvalError(
             "You need to upload your resume before we can match jobs to it.",
+          );
+        } else if (/already being matched/i.test(result.error)) {
+          setEvalError(
+            "That search is already being matched — give it a moment and try again.",
           );
         } else {
           setEvalError(
@@ -316,7 +324,7 @@ export default function EvaluationStep() {
             {selectedKey?.unevaluated !== 1 ? "s" : ""}) is being scored now.
           </div>
         )}
-        <EvaluationProgress />
+        <EvaluationProgress activeKey={selected} />
       </div>
     );
   }
@@ -435,7 +443,7 @@ export default function EvaluationStep() {
       <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-[var(--ink-soft)]">
         {counts.fit > 0 ? (
           <p>
-            You've matched every job in your search.{" "}
+            You&apos;ve matched every job in your search.{" "}
             <strong className="font-semibold text-[var(--ink)]">
               {counts.fit || 0} great fit
               {(counts.fit || 0) !== 1 ? "s" : ""}
@@ -529,8 +537,8 @@ export default function EvaluationStep() {
                 >
                   {keys.length === 0 && (
                     <li className="px-4 py-3 text-sm text-[var(--ink-faint)]">
-                      All your search keys have been matched — there's nothing
-                      left to score right now.
+                      All your search keys have been matched — there&apos;s
+                      nothing left to score right now.
                     </li>
                   )}
                   {keys.map((k) => {
@@ -627,7 +635,7 @@ export default function EvaluationStep() {
         {/* Failed retry copy */}
         {showFailedCopy && (
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            The last match didn't finish — pick a key and try again.
+            The last match didn&apos;t finish — pick a key and try again.
           </p>
         )}
 

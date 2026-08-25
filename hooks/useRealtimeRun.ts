@@ -348,9 +348,15 @@ export function useRealtimeRun(enabled = true) {
               dispatch(runStatusUpdated("processing"));
             else if (status === "retrying")
               dispatch(runStatusUpdated("retrying"));
-            else if (status === "completed")
-              dispatch(runStatusUpdated("completed"));
-            else if (status === "failed") dispatch(runStatusUpdated("failed"));
+            else if (status === "completed") {
+              // Authoritative terminal state — mark the run done even if one
+              // board failed/blocked (partial failures are not fatal). Without
+              // this, a single failed board could leave the phase stuck on
+              // "processing" forever ("the whole page stuck").
+              dispatch(runSucceeded());
+            } else if (status === "failed") {
+              dispatch(runStatusUpdated("failed"));
+            }
           }
         },
       );
