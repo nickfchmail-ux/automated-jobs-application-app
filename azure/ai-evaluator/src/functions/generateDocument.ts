@@ -39,6 +39,8 @@ export const generateDocument: HttpHandler = async (
     jobId?: string;
     userId?: string;
     type?: string;
+    /** Optional user refinement note (fine-tune the generated artifact). */
+    refinement?: string;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -49,6 +51,10 @@ export const generateDocument: HttpHandler = async (
   const jobId = body?.jobId;
   const userId = body?.userId;
   const type = body?.type;
+  const refinement =
+    typeof body?.refinement === "string" && body.refinement.trim()
+      ? body.refinement.trim().slice(0, 2000)
+      : undefined;
 
   if (!jobId || !userId) {
     return json({ ok: false, error: "jobId and userId are required" }, 400);
@@ -81,9 +87,14 @@ export const generateDocument: HttpHandler = async (
 
     const now = new Date().toISOString();
 
+    // A refinement request ALWAYS regenerates (the user is fine-tuning an
+    // existing artifact), so skip the idempotent "already ready" / "building"
+    // short-circuits in that case.
+    const isRefinement = !!refinement;
+
     if (type === "resume") {
-      // Already done → don't re-enqueue; just report the current state.
-      if (job.resume_status === "completed") {
+      // Already done → don't re-enqueue (unless refining); just report state.
+      if (job.resume_status === "completed" && !isRefinement) {
         return json(
           {
             ok: true,
@@ -94,7 +105,7 @@ export const generateDocument: HttpHandler = async (
           200,
         );
       }
-      if (job.resume_status === "building") {
+      if (job.resume_status === "building" && !isRefinement) {
         return json(
           {
             ok: true,
@@ -117,7 +128,7 @@ export const generateDocument: HttpHandler = async (
         .eq("id", jobId)
         .eq("user_id", userId);
     } else {
-      if (job.cover_letter_status === "completed") {
+      if (job.cover_letter_status === "completed" && !isRefinement) {
         return json(
           {
             ok: true,
@@ -128,7 +139,7 @@ export const generateDocument: HttpHandler = async (
           200,
         );
       }
-      if (job.cover_letter_status === "building") {
+      if (job.cover_letter_status === "building" && !isRefinement) {
         return json(
           {
             ok: true,
@@ -156,6 +167,7 @@ export const generateDocument: HttpHandler = async (
       jobId,
       userId,
       runId: job.pipeline_run_id,
+      ...(refinement ? { refinement } : {}),
     };
     await enqueueDocumentRequest(message);
 

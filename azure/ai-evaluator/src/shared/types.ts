@@ -135,6 +135,13 @@ export interface DocumentRequestMessage {
   userId: string;
   /** The pipeline_run the job belongs to (used for socket state). */
   runId: string | null;
+  /**
+   * Optional user refinement instruction. When present, the worker passes it
+   * to the LLM so it rewrites/refines the artifact based on the user's note
+   * AND the existing generated version — e.g. "make it more concise",
+   * "emphasize my data-entry experience", "fix the wording of bullet 3".
+   */
+  refinement?: string;
 }
 
 /**

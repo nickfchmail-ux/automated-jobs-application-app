@@ -192,12 +192,31 @@ export function serializeJobResume(job: JobForEvaluation): string {
 export function buildResumePrompt(
   resumeText: string,
   job: JobForEvaluation,
+  refinement?: string,
+  existingHtml?: string | null,
 ): ChatMessage[] {
+  // A refinement pass tells the AI to EDIT the previously generated resume
+  // based on the user's note, rather than regenerate from scratch.
+  const refinementBlock = refinement
+    ? `\n\n---\n\nUSER REFINEMENT REQUEST (apply this to the generated resume):\n${refinement}\n\nApply this refinement ON TOP of the previously generated resume below. Keep the overall structure and the job tailoring, but change exactly what the user asked for. If the user asks to add/emphasize something, only include it if it is TRUTHFULLY supported by the candidate resume — never invent.`
+    : "";
+  const existingBlock =
+    existingHtml && refinement
+      ? `\n\n---\n\nPREVIOUSLY GENERATED RESUME (refine this):\n${existingHtml.slice(0, 20000)}`
+      : "";
+  // For a REFINEMENT pass, give the AI the FULL job content (untruncated
+  // description) so it can re-check every requirement against the user's note
+  // and the base resume. For first-time generation, the trimmed job context
+  // (serializeJobResume) keeps it fast.
+  const jobContext = refinement
+    ? serializeJobFull(job)
+    : serializeJobResume(job);
+
   return [
     { role: "system", content: RESUME_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (key details — title, requirements, responsibilities, skills, company):\n\n${serializeJobResume(job)}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. The final resume MUST read as if it was written FOR THIS JOB. Even when the candidate lacks direct experience, reframe their TRANSFERABLE skills (admin, data entry, document handling, record-keeping, computer skills, attention to detail, process support) into the target role's language. A reader must be able to tell which job this resume targets from the summary and first bullets alone.\n2. Custom professional summary naming this role; bullets rewritten to mirror the job's requirements/keywords; most relevant skills/experience listed first.\n3. WORK EXPERIENCE + EDUCATION: keep every entry with all hard facts and 2-4 strong tailored bullets. PROJECTS: condense to a compact one-line list (name + tech + link, URL as visible text) — do NOT expand every project bullet. CERTIFICATIONS: one line each.\n4. Keep the whole resume CONCISE (~1 page) — brevity speeds up generation.\n5. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
+      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (${refinement ? "FULL — complete description, responsibilities, requirements, benefits, company info" : "key details — title, requirements, responsibilities, skills, company"}):\n\n${jobContext}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. The final resume MUST read as if it was written FOR THIS JOB. Even when the candidate lacks direct experience, reframe their TRANSFERABLE skills (admin, data entry, document handling, record-keeping, computer skills, attention to detail, process support) into the target role's language. A reader must be able to tell which job this resume targets from the summary and first bullets alone.\n2. Custom professional summary naming this role; bullets rewritten to mirror the job's requirements/keywords; most relevant skills/experience listed first.\n3. WORK EXPERIENCE + EDUCATION: keep every entry with all hard facts and 2-4 strong tailored bullets. PROJECTS: condense to a compact one-line list (name + tech + link, URL as visible text) — do NOT expand every project bullet. CERTIFICATIONS: one line each.\n4. Keep the whole resume CONCISE (~1 page) — brevity speeds up generation.\n5. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.${refinementBlock}${existingBlock}`,
     },
   ];
 }
@@ -223,12 +242,24 @@ Rules:
 export function buildCoverLetterPrompt(
   resumeText: string,
   job: JobForEvaluation,
+  refinement?: string,
+  existing?: string | null,
 ): ChatMessage[] {
+  // A refinement pass tells the AI to EDIT the previously generated letter
+  // based on the user's note, rather than write from scratch.
+  const refinementBlock = refinement
+    ? `\n\n---\n\nUSER REFINEMENT REQUEST (apply this to the cover letter):\n${refinement}\n\nRewrite the letter to satisfy the user's note. Keep the role/company addressed and all real facts; only change what the user asked. Never invent contact details or claims not in the resume.`
+    : "";
+  const existingBlock =
+    existing && refinement
+      ? `\n\n---\n\nPREVIOUSLY GENERATED COVER LETTER (refine this):\n${existing.slice(0, 8000)}`
+      : "";
+
   return [
     { role: "system", content: COVER_LETTER_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nWrite a tailored cover letter for this exact role.`,
+      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nWrite a tailored cover letter for this exact role.${refinementBlock}${existingBlock}`,
     },
   ];
 }

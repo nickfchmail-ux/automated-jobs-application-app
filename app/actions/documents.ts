@@ -48,8 +48,9 @@ export type TriggerDocumentResult =
  */
 export async function triggerResumeAction(
   jobId: string,
+  refinement?: string,
 ): Promise<TriggerDocumentResult> {
-  return triggerDocument(jobId, "resume");
+  return triggerDocument(jobId, "resume", refinement);
 }
 
 /**
@@ -59,13 +60,15 @@ export async function triggerResumeAction(
  */
 export async function triggerCoverLetterAction(
   jobId: string,
+  refinement?: string,
 ): Promise<TriggerDocumentResult> {
-  return triggerDocument(jobId, "cover-letter");
+  return triggerDocument(jobId, "cover-letter", refinement);
 }
 
 async function triggerDocument(
   jobId: string,
   type: "resume" | "cover-letter",
+  refinement?: string,
 ): Promise<TriggerDocumentResult> {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
@@ -79,7 +82,12 @@ async function triggerDocument(
         "Content-Type": "application/json",
         "x-functions-key": EVALUATOR_FUNCTION_KEY,
       },
-      body: JSON.stringify({ jobId, userId, type }),
+      body: JSON.stringify({
+        jobId,
+        userId,
+        type,
+        ...(refinement ? { refinement } : {}),
+      }),
       signal: controller.signal,
       cache: "no-store",
     });

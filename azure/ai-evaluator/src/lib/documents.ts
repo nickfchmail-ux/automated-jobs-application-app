@@ -48,6 +48,48 @@ async function loadOwnedJob(
 }
 
 /**
+ * Fetch the previously generated resume HTML (if any) so a refinement pass can
+ * build on it rather than regenerate from scratch. Returns null when none.
+ */
+async function fetchExistingResumeHtml(
+  userId: string,
+  jobId: string,
+): Promise<string | null> {
+  const GENERATED_BUCKET = "generated-resumes";
+  const fileName = `${userId}-${jobId}.html`;
+  try {
+    const sb = getSupabase();
+    const { data: blob, error } = await sb.storage
+      .from(GENERATED_BUCKET)
+      .download(fileName);
+    if (error || !blob) return null;
+    return Buffer.from(await blob.arrayBuffer()).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** The previously generated cover letter for the job (scoped to the owner). */
+async function getExistingCoverLetter(
+  userId: string,
+  jobId: string,
+): Promise<string | null> {
+  try {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from("jobs")
+      .select("cover_letter")
+      .eq("id", jobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data?.cover_letter) return null;
+    return String(data.cover_letter);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Generate a TAILORED RESUME for one job (owned by `userId`).
  *
  *  1. Fetch + sanitize the user's resume (contact included — a tailored
@@ -62,11 +104,15 @@ export async function generateTailoredResume(
   msg: DocumentRequestMessage,
   log: (m: string) => void,
 ): Promise<void> {
-  const { jobId, userId, runId } = msg;
+  const { jobId, userId, runId, refinement } = msg;
   const job = await loadOwnedJob(jobId, userId);
 
   const rawResume = await fetchResumeText(userId);
   const resumeText = sanitizeResume(rawResume, { includeContact: true });
+
+  // Fetch the previously generated resume (if any) so a REFINEMENT pass can
+  // build on it instead of starting from scratch.
+  const existingHtml = await fetchExistingResumeHtml(userId, jobId);
 
   // LLM generation with the FULL job + resume context so nothing is lost.
   // The LLM reads the candidate's complete resume + the entire job posting
@@ -74,7 +120,7 @@ export async function generateTailoredResume(
   // strips hyperlinks to visible text (URLs must print in PDF) + adds print
   // CSS. Uses the fast deepseek-chat model.
   const { resumeHtml } = await generateResumeWithLLM(
-    buildResumePrompt(resumeText, job),
+    buildResumePrompt(resumeText, job, refinement, existingHtml),
   );
   const printReadyHtml = enhanceResumeForPrint(resumeHtml);
   const { resumeUrl } = await storeGeneratedResume({
@@ -118,14 +164,18 @@ export async function generateCoverLetterForJob(
   msg: DocumentRequestMessage,
   log: (m: string) => void,
 ): Promise<void> {
-  const { jobId, userId, runId } = msg;
+  const { jobId, userId, runId, refinement } = msg;
   const job = await loadOwnedJob(jobId, userId);
 
   const rawResume = await fetchResumeText(userId);
   const resumeText = sanitizeResume(rawResume, { includeContact: true });
 
+  // The previously generated cover letter (if any) so a REFINEMENT pass can
+  // edit it based on the user's note instead of starting fresh.
+  const existing = await getExistingCoverLetter(userId, jobId);
+
   const coverLetter = await generateCoverLetterWithLLM(
-    buildCoverLetterPrompt(resumeText, job),
+    buildCoverLetterPrompt(resumeText, job, refinement, existing),
   );
   if (!coverLetter.trim()) {
     throw new Error("LLM returned an empty cover letter");

@@ -151,6 +151,10 @@ export default function CoverLetterGenerationCard({
   // Optimistic local override: show "Writing…" immediately after triggering
   // instead of waiting for the Realtime/socket round-trip.
   const [optimisticBuilding, setOptimisticBuilding] = useState(false);
+  // Fine-tune overlay: user enters a refinement note, we regenerate the letter
+  // with that instruction appended to the prompt.
+  const [fineTuneOpen, setFineTuneOpen] = useState(false);
+  const [refinement, setRefinement] = useState("");
 
   const status =
     coverLetterStatus === "completed" || coverLetterStatus === "failed"
@@ -178,6 +182,29 @@ export default function CoverLetterGenerationCard({
     }
     // Success → optimistically show "Writing your cover letter…" now.
     setOptimisticBuilding(true);
+  }
+
+  async function handleGenerateWithRefinement() {
+    const note = refinement.trim();
+    if (!note) {
+      setActionError("Tell us what to change before regenerating.");
+      return;
+    }
+    setActionError(null);
+    setFineTuneOpen(false);
+    setRequesting(true);
+    const res = await triggerCoverLetterAction(jobId, note);
+    setRequesting(false);
+    if (!res.ok) {
+      setActionError(
+        /resume/i.test(res.error)
+          ? "Upload a resume first, then try again."
+          : "Couldn't regenerate your cover letter. Please try again in a moment.",
+      );
+      return;
+    }
+    setOptimisticBuilding(true);
+    setRefinement("");
   }
 
   async function handleCopy() {
@@ -257,52 +284,31 @@ export default function CoverLetterGenerationCard({
           </button>
           <button
             type="button"
-            onClick={handleCopy}
-            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-          >
-            {copied ? (
-              <>
-                <svg
-                  className="w-4 h-4 text-emerald-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                Copied!
-              </>
-            ) : (
-              <>
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-                Copy
-              </>
-            )}
-          </button>
-          <button
-            type="button"
             onClick={handleDownload}
             disabled={downloading}
             className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {downloading ? "Exporting…" : "Download Word"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFineTuneOpen(true)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+              />
+            </svg>
+            Fine-tune
           </button>
         </div>
       ) : (
@@ -339,22 +345,23 @@ export default function CoverLetterGenerationCard({
         <p className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p>
       )}
 
-      {/* Cover letter modal */}
-      {modalOpen && coverLetter && (
+      {/* Fine-tune overlay — user tells us what to change, we regenerate the
+          letter with that note (plus the base resume + full job content). */}
+      {fineTuneOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setModalOpen(false)}
+          onClick={() => setFineTuneOpen(false)}
         >
           <div
-            className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700"
+            className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700 p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
-              <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">
-                Cover Letter
-              </span>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                Fine-tune your cover letter
+              </h3>
               <button
-                onClick={() => setModalOpen(false)}
+                onClick={() => setFineTuneOpen(false)}
                 className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
                 aria-label="Close"
               >
@@ -372,6 +379,117 @@ export default function CoverLetterGenerationCard({
                   />
                 </svg>
               </button>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+              Tell us what to adjust — e.g. &ldquo;make it more concise&rdquo;,
+              &ldquo;emphasize my experience with X&rdquo;, or &ldquo;soften
+              the tone&rdquo;. We&apos;ll regenerate using your note, your base
+              resume, and the full job posting.
+            </p>
+            <textarea
+              value={refinement}
+              onChange={(e) => setRefinement(e.target.value)}
+              rows={5}
+              placeholder="e.g. Make it more concise and professional; focus on my administrative experience."
+              className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none"
+            />
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={() => setFineTuneOpen(false)}
+                className="text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGenerateWithRefinement}
+                disabled={requesting}
+                className="text-sm font-semibold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
+              >
+                {requesting ? "Regenerating…" : "Regenerate letter"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cover letter modal */}
+      {modalOpen && coverLetter && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700 shrink-0">
+              <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">
+                Cover Letter
+              </span>
+              <div className="flex items-center gap-2">
+                {/* Copy — copies the CURRENT active letter. Lives in the
+                    overlay so the card body stays clean. */}
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5 text-emerald-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                        />
+                      </svg>
+                      Copy
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setModalOpen(false)}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                  aria-label="Close"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div className="overflow-y-auto p-6">
               <p className="text-sm leading-7 text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
