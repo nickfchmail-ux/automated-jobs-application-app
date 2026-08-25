@@ -5,44 +5,54 @@ description: "JobSeek AI evaluation patterns: per-job LLM scoring, fit scoring t
 
 # JobSeek AI Evaluator Patterns
 
-## The One-Queue One-Worker Design (Critical)
+## Three Independent Queues (Critical)
 
 The evaluator is a single Azure Functions app with its **own** Service Bus
-queue. `POST /api/evaluate` enqueues ONE message and returns 202; the
-`evaluateWorker` queue trigger (same app) runs the ENTIRE evaluation
-in-process. There is **no function-to-function call chain** and only ONE
-queue (the old `evaluateBatch → generateJobDocuments` chain is gone).
+namespace and **THREE independent queues**, one per concern. Each scales,
+retries, and fails on its own — no function-to-function call chain:
 
-Per job:
+| Queue                   | Producer                                    | Consumer            | Purpose                            |
+| ----------------------- | ------------------------------------------- | ------------------- | ---------------------------------- |
+| `evaluation-requests`   | `evaluate` (HTTP)                           | `evaluateWorker`    | Per-job AI fit scoring (1 msg/job) |
+| `resume-requests`       | `evaluateWorker` (fit) / `generateDocument` | `resumeWorker`      | Tailored resume for ONE job        |
+| `cover-letter-requests` | `evaluateWorker` (fit) / `generateDocument` | `coverLetterWorker` | Cover letter for ONE job           |
 
-1. **One LLM call** returns fit + fit_score + reasons + cover letter.
-2. **fit === true** → a second LLM call generates the tailored resume HTML
-   (stored in the `generated-resumes` bucket).
-3. **fit === false** → no cover letter and no resume are produced.
+Per job (evaluateWorker):
+
+1. **One LLM call** returns fit + fit_score + reasons + justification.
+2. **fit === true** → the worker enqueues ONE message to `resume-requests`
+   AND ONE to `cover-letter-requests`. The DEDICATED `resumeWorker` and
+   `coverLetterWorker` functions generate each artifact **independently and
+   in parallel** — a resume build never blocks or depends on the cover
+   letter (or vice-versa).
+3. **fit === false** → no documents are enqueued (one small call, no docs).
 
 Never chain functions over queues, and never fall back to a grouped
 "one call scores the whole batch" approach — per-job calls keep responses
 small (no output-token truncation) and progress can be written back per job.
 
-Durability: Service Bus retries if the worker crashes; the orchestrator is
-idempotent (only scores `fit_score IS NULL` jobs, clears + rewrites
-`evaluation_runs` rows for the run).
+Durability: Service Bus retries if a worker crashes; status lives in Supabase
+(`resume_status` / `cover_letter_status`), so a page refresh mid-generation
+re-hydrates `building` and the build continues server-side. On a fit-job
+re-evaluation, already-completed documents are preserved (not re-enqueued).
 
 ## Files
 
 `azure/ai-evaluator/src/lib/`:
 
-- `ai.ts` — OpenAI-compatible client call (model config), single-job parse + LLM helpers.
-- `runEvaluator.ts` — the in-process orchestrator (loads jobs → groups by keyword → scores each → writes back → sets evaluation_status → notifies socket).
-- `prompts.ts` — the evaluation prompt + the tailored-resume prompt. Keep them centralized.
+- `ai.ts` — OpenAI-compatible client call (model config), single-job parse + LLM helpers (evaluation, resume, cover letter).
+- `documents.ts` — the on-demand document builders: `generateTailoredResume` + `generateCoverLetterForJob` (owned-scoped reads/writes).
+- `runEvaluator.ts` — LEGACY in-process orchestrator (tests only; the worker uses `evaluateJob.ts`).
+- `evaluateJob.ts` — the ACTUAL per-job worker body (scores + enqueues fit docs).
+- `prompts.ts` — the evaluation prompt + tailored-resume prompt + cover-letter prompt. Keep them centralized.
 - `resume.ts` — loads/parses the user's resume for context (sanitizes PII).
 - `resumeDocuments.ts` — uploads generated resume HTML to `generated-resumes`, upserts `generated_resumes`.
-- `socket.ts` — POSTs to the backend `/webhook/state` so the user's socket.io room gets live `stats` (evaluation) events.
-- `serviceBus.ts` — the evaluator's OWN Service Bus sender (one queue, `evaluation-requests`).
+- `socket.ts` — POSTs to the backend `/webhook/state` so the user's socket.io room gets live `stats` (evaluation) + `job:state` (document) events.
+- `serviceBus.ts` — the evaluator's OWN Service Bus senders (three queues).
 - `status.ts` — `evaluation_runs` status transitions + `pipeline_runs.evaluation_status`.
-- `supabase.ts` — evaluator-side Supabase writes (scores, reasons, cover letters, resume fields).
+- `supabase.ts` — evaluator-side Supabase writes (scores, reasons, document fields).
 
-Functions: `evaluate` (HTTP trigger → enqueue, 202), `evaluateWorker` (queue trigger → orchestrator), `evaluateStatus` (HTTP → progress).
+Functions: `evaluate` (HTTP → enqueue, 202), `evaluateWorker` (queue → score + enqueue fit docs), `evaluateStatus` (HTTP → progress), `generateDocument` (HTTP → on-demand/retry), `resumeWorker` (queue → resume), `coverLetterWorker` (queue → cover letter).
 
 ## Scoring Contract
 
@@ -55,9 +65,13 @@ Functions: `evaluate` (HTTP trigger → enqueue, 202), `evaluateWorker` (queue t
 
 ## Cover Letters & Tailored Resumes
 
-- The evaluator generates `cover_letter` text per job (fit jobs only).
-- Fit jobs also get a tailored resume HTML uploaded to the `generated-resumes`
+- **Auto-generated for fit jobs** via the dedicated `resumeWorker` /
+  `coverLetterWorker` functions (each on its OWN queue), and available
+  **on-demand** (via `generateDocument`) for retry or for any job.
+- Fit jobs get a tailored resume HTML uploaded to the `generated-resumes`
   bucket; `jobs.resume_status` / `jobs.resume_url` mirror it for Realtime.
+- Cover letters are stored as text on `jobs.cover_letter` with
+  `cover_letter_status` streaming the build state.
 - Client-side DOCX export uses the `docx` package (`CoverLetterActions.tsx`) — server renders plain text; the client builds the `.docx`.
 
 ## Prompts

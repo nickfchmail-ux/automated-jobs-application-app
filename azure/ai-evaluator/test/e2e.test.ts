@@ -140,6 +140,10 @@ function installMocks(sb: ReturnType<typeof makeSupabase>) {
     enqueueEvaluationJobs: async (msgs: unknown[]) => {
       state.enqueued.push(...msgs);
     },
+    enqueueDocumentRequest: async (msg: unknown) => {
+      state.enqueued.push(msg);
+      return "doc-msg";
+    },
   });
   mock("../src/lib/ai.js", {
     evaluateSingleJobWithLLM: async (msgs: { content?: string }[]) => ({
@@ -292,11 +296,31 @@ test("e2e: queue worker scores one job and finalizes the batch", async () => {
   assert.equal(state.jobUpdates.length, 1, "job was scored + written back");
   const up = state.jobUpdates[0] as {
     fit: boolean;
-    cover_letter: string;
     resume_status: string;
+    cover_letter_status: string;
   };
   assert.equal(up.fit, true);
-  assert.equal(up.cover_letter, "Dear team");
-  assert.equal(up.resume_status, "completed");
+  // Decoupled flow: the worker SCORES the job and marks both documents
+  // `building` (the dedicated resume/cover-letter workers generate them).
+  assert.equal(up.resume_status, "building");
+  assert.equal(up.cover_letter_status, "building");
   assert.ok(state.notifyCalls >= 1, "socket notified on progress");
+
+  // Fit job → one message enqueued to EACH dedicated document queue.
+  const docMsgs = state.enqueued.filter(
+    (m) =>
+      typeof m === "object" &&
+      m !== null &&
+      ((m as { type?: string }).type === "resume" ||
+        (m as { type?: string }).type === "cover-letter"),
+  );
+  assert.equal(docMsgs.length, 2, "fit job enqueues resume + cover letter");
+  assert.ok(
+    docMsgs.some((m) => (m as { type: string }).type === "resume"),
+    "a resume-requests message was enqueued",
+  );
+  assert.ok(
+    docMsgs.some((m) => (m as { type: string }).type === "cover-letter"),
+    "a cover-letter-requests message was enqueued",
+  );
 });

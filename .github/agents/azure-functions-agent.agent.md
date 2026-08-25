@@ -23,15 +23,16 @@ You are the **Azure Functions Agent** for JobSeek. You own the serverless micros
 
 ## What You Own
 
-- `azure/ai-evaluator/` (functions: evaluate, evaluateWorker, evaluateStatus; lib: ai, runEvaluator, prompts, resume, resumeDocuments, socket, serviceBus, status, supabase)
+- `azure/ai-evaluator/` (functions: evaluate, evaluateWorker, evaluateStatus, generateDocument, resumeWorker, coverLetterWorker; lib: ai, documents, evaluateJob, prompts, resume, resumeDocuments, socket, serviceBus, status, supabase)
 - The scraper Azure Function app (jobsautomation-fn)
-- Service Bus wiring: scraper uses the backend's bus; the evaluator has its OWN bus + `evaluation-requests` queue (one queue, one worker — no function-to-function chain)
-- `host.json`, `local.settings.json`, function keys, deployment
+- Service Bus wiring: scraper uses the backend's bus; the evaluator has its OWN bus with THREE queues: `evaluation-requests` (scoring), `resume-requests` (tailored resume), `cover-letter-requests` (cover letter) — no function-to-function chain. Fit jobs auto-enqueue resume + cover-letter builds via the dedicated workers.
+- `host.json`, `local.settings.json`, `infra/queues.bicep`, function keys, deployment
 
 > **Evaluator → socket:** the evaluator POSTs to the backend Express
 > `/webhook/state` (`lib/socket.ts`, env `STATE_WEBHOOK_URL` /
 > `STATE_WEBHOOK_SECRET`) at start/progress/completion so evaluation state
-> streams to the user's socket.io room via the unified `stats` event.
+> streams to the user's socket.io room via the unified `stats` event; the
+> document workers also push a `job:state` event for per-job updates.
 
 ## Constraints
 

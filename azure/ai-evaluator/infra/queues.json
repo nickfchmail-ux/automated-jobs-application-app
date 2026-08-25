@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "3299606732609355163"
+    }
+  },
+  "parameters": {
+    "serviceBusNamespaceName": {
+      "type": "string",
+      "defaultValue": "jobsautomation-sbns"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', parameters('serviceBusNamespaceName'), 'resume-requests')]",
+      "properties": {
+        "maxSizeInMegabytes": 1024,
+        "defaultMessageTimeToLive": "P2D",
+        "maxDeliveryCount": 5,
+        "duplicateDetectionHistoryTimeWindow": "PT10M",
+        "deadLetteringOnMessageExpiration": true,
+        "enablePartitioning": true,
+        "lockDuration": "PT5M"
+      }
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', parameters('serviceBusNamespaceName'), 'cover-letter-requests')]",
+      "properties": {
+        "maxSizeInMegabytes": 1024,
+        "defaultMessageTimeToLive": "P2D",
+        "maxDeliveryCount": 5,
+        "duplicateDetectionHistoryTimeWindow": "PT10M",
+        "deadLetteringOnMessageExpiration": true,
+        "enablePartitioning": true,
+        "lockDuration": "PT5M"
+      }
+    }
+  ],
+  "outputs": {
+    "serviceBusNamespaceName_out": {
+      "type": "string",
+      "value": "[parameters('serviceBusNamespaceName')]"
+    }
+  }
+}

@@ -19,50 +19,61 @@ Next.js app → POST /api/evaluate (this service) → 202
                                     pipeline_runs.evaluation_status = completed
 ```
 
-## Why one queue + one worker (no function-to-function calls)
+## Queues: three independent concerns (no function-to-function calls)
 
-The original design chained Azure Functions over Service Bus:
+The evaluator owns its own Service Bus namespace with **three queues**, so
+each concern scales, retries, and fails independently:
 
-```
-evaluate (HTTP) → evaluateBatch (Service Bus queue) → generateJobDocuments (Service Bus queue)
-```
+| Queue                   | Producer                  | Consumer            | Purpose                                     |
+| ----------------------- | ------------------------- | ------------------- | ------------------------------------------- |
+| `evaluation-requests`   | `evaluate` (HTTP)         | `evaluateWorker`    | Per-job AI fit scoring (fan-out, 1 msg/job) |
+| `resume-requests`       | `generateDocument` (HTTP) | `resumeWorker`      | On-demand tailored resume for ONE job       |
+| `cover-letter-requests` | `generateDocument` (HTTP) | `coverLetterWorker` | On-demand cover letter for ONE job          |
 
-That required TWO queues and TWO worker functions calling each other. It is
-now reduced to **one queue and one worker**:
-
-- `POST /api/evaluate` (HTTP) validates the run, enqueues **ONE message** to
-  the evaluator's own Service Bus queue (`evaluation-requests`), and returns
-  **202 Accepted** immediately.
-- `evaluateWorker` (Service Bus queue trigger, **this same app**) consumes it
-  and runs the whole evaluation in-process. There is **no function calling
-  another function** and no second queue.
-- **Durability**: if the worker crashes mid-run, Service Bus retries the
-  message (the orchestrator is idempotent — it only scores jobs with
-  `fit_score IS NULL` and clears/rewrites `evaluation_runs` rows for the run).
+- `POST /api/evaluate` validates the run, enqueues **ONE message per job** to
+  `evaluation-requests`, and returns **202**. `evaluateWorker` scores each
+  job (fit + score + reasons). When a job is a **fit**, the worker ALSO
+  enqueues **one message to the `resume-requests` queue and one to the
+  `cover-letter-requests` queue** — so both documents are auto-generated, but
+  by their OWN dedicated Azure Functions (independently + in parallel). No-fit
+  jobs enqueue nothing (one small call, no documents).
+- `POST /api/documents/generate` with `{ jobId, userId, type }` lets the user
+  (re)generate a tailored resume OR cover letter **on demand** for any job. It
+  verifies the job belongs to `userId`, marks the artifact `building`
+  (durable across refresh), and enqueues ONE message to that artifact's queue.
+  The `resumeWorker` / `coverLetterWorker` consume it independently.
+- **Durability**: status lives in Supabase (`resume_status` /
+  `cover_letter_status`). If the user refreshes the page mid-generation, the
+  detail page re-reads `building` and shows "Generating…" — the Service Bus
+  message is already durable, so the build continues server-side.
+- **Security**: every HTTP trigger + worker verifies ownership via
+  `.eq("user_id", userId)` on every query/update. RLS on `jobs` +
+  `generated_resumes` additionally protects the browser/Realtime path.
 
 This respects the **two-Service-Bus model**: the **scraper** owns its own
 Service Bus in `backend-scraping-api/azure/functions`; the **evaluator** owns
-its own separate Service Bus (namespace + queue) for evaluation + resume +
-cover letter.
+its own separate Service Bus for evaluation + resume + cover letter.
 
 - **Live state over WebSocket**: at each progress point (start, per-job,
-  completion) the evaluator POSTs to the backend Express app's
+  completion, document done) the evaluator POSTs to the backend Express app's
   `/webhook/state` endpoint (`lib/socket.ts`), which pushes a `stats` event
-  to the user's socket.io room with the evaluation status + per-batch
-  progress. Supabase Realtime is the fallback for individual row changes.
+  to the user's socket.io room. Supabase Realtime is the fallback for
+  individual row changes (fit columns, resume_status, cover_letter_status).
 - **Independent scaling** is preserved: the evaluator is still a separate
   deployable app, so slow/expensive LLM calls never block scraping.
-- **Cost control** stays: one LLM call per job for scoring, plus one extra
-  call per **fit** job for the tailored resume. Not-fit jobs cost exactly one
-  small call and produce no cover letter or resume.
+- **Cost control** stays: one LLM call per job for scoring; one call per
+  requested resume; one call per requested cover letter.
 
 ## Functions
 
-| Function         | Trigger           | Purpose                                                                   |
-| ---------------- | ----------------- | ------------------------------------------------------------------------- |
-| `evaluate`       | HTTP POST         | Validate the run, enqueue one message (202 Accepted), return immediately. |
-| `evaluateWorker` | Service Bus queue | Run the ENTIRE evaluation in-process (scoring + resume + cover letter).   |
-| `evaluateStatus` | HTTP GET          | Per-batch progress for a run (used by the frontend live UI).              |
+| Function            | Trigger           | Purpose                                                                  |
+| ------------------- | ----------------- | ------------------------------------------------------------------------ |
+| `evaluate`          | HTTP POST         | Validate the run, enqueue one message per job (202), return immediately. |
+| `evaluateWorker`    | Service Bus queue | Score ONE job (fit + score + reasons).                                   |
+| `evaluateStatus`    | HTTP GET          | Per-batch progress for a run (used by the frontend live UI).             |
+| `generateDocument`  | HTTP POST         | Start an on-demand tailored resume / cover letter (ownership-checked).   |
+| `resumeWorker`      | Service Bus queue | Generate + store a tailored resume for one job.                          |
+| `coverLetterWorker` | Service Bus queue | Generate + persist a cover letter for one job.                           |
 
 ## Local development
 
@@ -82,7 +93,9 @@ Requires [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-fu
 | `ServiceBus__fullyQualifiedNamespace` | Evaluator's OWN Service Bus namespace (managed identity) |
 | `ServiceBus__credential`              | `managedidentity` (prod) / `connectionstring` (local)    |
 | `ServiceBus__connectionString`        | SAS connection string for local dev                      |
-| `EvaluationQueue`                     | Evaluator's queue name (default `evaluation-requests`)   |
+| `EvaluationQueue`                     | Evaluation queue (default `evaluation-requests`)         |
+| `ResumeQueue`                         | Resume queue (default `resume-requests`)                 |
+| `CoverLetterQueue`                    | Cover-letter queue (default `cover-letter-requests`)     |
 | `SupabaseUrl`                         | Supabase project URL                                     |
 | `SupabaseServiceKey`                  | Service-role key (bypasses RLS for write-back)           |
 | `DeepSeekBaseUrl`                     | OpenAI-compatible endpoint (default DeepSeek)            |
@@ -95,14 +108,25 @@ Requires [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-fu
 
 ## Data written back (per job)
 
+**Evaluation** (`evaluateWorker`):
+
 - `fit`, `fit_score` (0–100), `fit_reasons`, `not_fit_reasons`, `justification`
-- `cover_letter` (fit jobs only; `null` otherwise)
 - `expected_salary`
 - `status` → `analysed`
-- `resume_status` / `resume_url` / `resume_error` (fit jobs only — tailored
-  resume HTML uploaded to the `generated-resumes` bucket, tracked in
-  `generated_resumes`)
+- For FIT jobs: enqueues `resume-requests` + `cover-letter-requests`
+  (auto-generation via the dedicated workers below).
+
+**Tailored resume** (`resumeWorker` — auto for fit, or on demand):
+
+- `resume_status` → `building → completed | failed`
+- `resume_url` / `resume_file_name` / `resume_error`
+- HTML uploaded to the `generated-resumes` bucket, tracked in `generated_resumes`
+
+**Cover letter** (`coverLetterWorker` — auto for fit, or on demand):
+
+- `cover_letter_status` → `building → completed | failed`
+- `cover_letter` (the letter text) / `cover_letter_error`
 
 Progress is written to `evaluation_runs` (one row per keyword batch) and the
-overall state is reflected on `pipeline_runs.evaluation_status`
+overall evaluation state is reflected on `pipeline_runs.evaluation_status`
 (`none → queued → evaluating → completed / failed`).

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildResumePrompt, buildSingleJobPrompt } from "../src/lib/prompts.js";
+import {
+  buildCoverLetterPrompt,
+  buildResumePrompt,
+  buildSingleJobPrompt,
+} from "../src/lib/prompts.js";
 import type { JobForEvaluation } from "../src/shared/types.js";
 
 const JOB: JobForEvaluation = {
@@ -17,6 +21,8 @@ const JOB: JobForEvaluation = {
   skills: ["React", "TypeScript"],
   employment_type: "Full-time",
   experience_level: "Senior",
+  about_company: "A fast-growing fintech company.",
+  posted_date: "2026-08-01",
   search_key: "react_engineer",
   user_id: "user-1",
   pipeline_run_id: "run-1",
@@ -58,7 +64,25 @@ test("buildResumePrompt: asks for resumeHtml only (documents)", () => {
   const [sys, user] = buildResumePrompt("resume text", JOB);
   assert.match(sys.content, /"resumeHtml"/);
   assert.ok(!/"coverLetter"/.test(sys.content));
-  assert.ok(user.content.includes(JOB.id));
+  // The resume prompt uses the FULL job serialization so the LLM sees ALL
+  // the job content + the complete resume, and is told to preserve everything.
+  assert.ok(user.content.includes("resume text"));
+  assert.ok(user.content.includes("Acme Corp"));
+  assert.ok(user.content.includes("A fast-growing fintech company")); // about_company
+  assert.match(user.content, /PRESERVE ALL OF IT/);
+  assert.match(user.content, /Do NOT omit, truncate, or drop any content/);
+});
+
+test("buildCoverLetterPrompt: includes the FULL job content + resume", () => {
+  const [, user] = buildCoverLetterPrompt("candidate resume text", JOB);
+  // The AI must see the candidate resume.
+  assert.ok(user.content.includes("candidate resume text"));
+  // AND the complete job content — company, about_company, full description.
+  assert.ok(user.content.includes("Acme Corp"));
+  assert.ok(user.content.includes("A fast-growing fintech company"));
+  assert.ok(user.content.includes("React, TypeScript, Azure"));
+  // It must not truncate the raw description for document generation.
+  assert.match(user.content, /Job posting \(FULL/);
 });
 
 test("buildSingleJobPrompt: job with null fields still serializes", () => {

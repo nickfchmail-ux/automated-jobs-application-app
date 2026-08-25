@@ -1,4 +1,5 @@
 import type {
+  CoverLetterStatus,
   FunnelCounts,
   JobRowStatus,
   PipelineRunStatus,
@@ -88,7 +89,11 @@ export function evaluationStatusCopy(
     case "queued":
       return { label: "Waiting to evaluate…", tone: "neutral", live: true };
     case "evaluating":
-      return { label: "Matching jobs against your resume…", tone: "active", live: true };
+      return {
+        label: "Matching jobs against your resume…",
+        tone: "active",
+        live: true,
+      };
     case "completed":
       return { label: "Evaluated ✓", tone: "success", live: false };
     case "failed":
@@ -245,6 +250,41 @@ export function resumeStatusCopy(status: ResumeStatus): ResumeStatusCopy {
       return { label: "Resume ready ✓", tone: "success", live: false };
     case "failed":
       return { label: "Couldn't build a resume", tone: "error", live: false };
+  }
+}
+
+// ── Cover letter status ──────────────────────────────────────────
+
+export interface CoverLetterStatusCopy {
+  label: string;
+  tone: ResumeTone;
+  live: boolean;
+}
+
+/** jobs.cover_letter_status → human copy (independent generation). */
+export function coverLetterStatusCopy(
+  status: CoverLetterStatus | null | undefined,
+): CoverLetterStatusCopy {
+  switch (status) {
+    case "building":
+      return {
+        label: "Writing your cover letter…",
+        tone: "active",
+        live: true,
+      };
+    case "completed":
+      return { label: "Cover letter ready ✓", tone: "success", live: false };
+    case "failed":
+      return {
+        label: "Couldn't write the cover letter",
+        tone: "error",
+        live: false,
+      };
+    case "none":
+    case null:
+    case undefined:
+    default:
+      return { label: "Not started", tone: "neutral", live: false };
   }
 }
 

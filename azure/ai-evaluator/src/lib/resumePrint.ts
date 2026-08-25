@@ -59,26 +59,50 @@ const PRINT_CSS = `
 `;
 
 /**
+ * Convert every hyperlink into VISIBLE PLAIN TEXT.
+ *
+ * When a resume is printed/saved as PDF, browsers ignore `<a href>` links —
+ * the URL never shows up on paper. So we replace each anchor with its text
+ * followed by the URL in parentheses (or just the URL when the anchor has no
+ * text). This guarantees the URL is always visible in the printed PDF.
+ */
+function stripHyperlinks(html: string): string {
+  // <a href="https://...">Text</a> → "Text (https://...)"
+  return html.replace(
+    /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+    (_m, href: string, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, "").trim();
+      const url = href.trim();
+      if (text && url && text !== url) return `${text} (${url})`;
+      return url || text;
+    },
+  );
+}
+
+/**
  * Inject the print-optimized stylesheet into a raw LLM-generated resume HTML
- * document. If the HTML already has a <style> block, our CSS is appended so
- * it wins on print; otherwise we insert a <style> in <head>.
+ * document, and strip hyperlinks so URLs always print as visible text. If the
+ * HTML already has a <style> block, our CSS is appended so it wins on print;
+ * otherwise we insert a <style> in <head>.
  */
 export function enhanceResumeForPrint(rawHtml: string): string {
-  const styleTag = `<style>${PRINT_CSS}</style>`;
+  // 1. Convert every <a href> into visible plain text (URLs print in PDF).
+  const html = stripHyperlinks(rawHtml);
+
+  // 2. Belt-and-suspenders: even if a link slips through, print it as plain
+  //    text (no underline/color) so it is never invisible on paper.
+  const styleTag = `<style>${PRINT_CSS} a { text-decoration: none !important; color: inherit !important; }</style>`;
 
   // If it's a full document with </head>, inject before it.
-  if (/<\/head>/i.test(rawHtml)) {
-    return rawHtml.replace(/<\/head>/i, `${styleTag}</head>`);
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `${styleTag}</head>`);
   }
 
   // If it has an opening <html> but no head, add a head.
-  if (/<html[^>]*>/i.test(rawHtml)) {
-    return rawHtml.replace(
-      /<html[^>]*>/i,
-      (m) => `${m}<head>${styleTag}</head>`,
-    );
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(/<html[^>]*>/i, (m) => `${m}<head>${styleTag}</head>`);
   }
 
   // Bare fragment → wrap in a full document.
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${styleTag}</head><body>${rawHtml}</body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${styleTag}</head><body>${html}</body></html>`;
 }

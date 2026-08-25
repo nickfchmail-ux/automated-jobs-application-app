@@ -23,10 +23,19 @@ const MAX_RETRIES = RETRY_DELAYS_MS.length;
 /**
  * Retry a transient LLM failure (empty response, timeout, 5xx, rate-limit)
  * with backoff. Permanent failures (bad request, auth) fail fast.
+ *
+ * `maxRetries` can be lowered for long-running document generation — the
+ * default 3 retries + Service Bus re-delivery backoff can turn a single
+ * resume (which legitimately takes ~30-40s) into a 5-minute wait when it
+ * times out. Resume/cover-letter generation uses 1 retry to fail fast and
+ * let the user retry from the UI instead of silently waiting.
  */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+): Promise<T> {
   let lastErr: unknown;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (e) {
@@ -159,6 +168,14 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  /**
+   * Whether to ask the model for strict JSON (`response_format: json_object`).
+   * Default true (evaluation + resume need JSON). Set FALSE for the cover
+   * letter so it returns clean plain text directly — faster, and there is no
+   * JSON wrapper to unwrap (which could otherwise leak raw JSON if unwrap
+   * failed).
+   */
+  jsonMode?: boolean;
 }
 
 /**
@@ -176,10 +193,16 @@ export async function chatCompletion(
   ).replace(/\/+$/, "");
   const apiKey = process.env["DEEP_SEEK_API"] || process.env["DeepSeekApiKey"];
   if (!apiKey) throw new Error("DEEP_SEEK_API must be set");
+  // IMPORTANT: use the FAST chat model `deepseek-chat`. Do NOT configure
+  // `deepseek-v4-flash` — that is a REASONING variant that burns tokens
+  // "thinking" before each answer (we saw reasoning_tokens + empty content +
+  // slow generation for documents). `deepseek-chat` is the standard fast chat
+  // model (the API serves the flash model under this id, WITHOUT reasoning
+  // overhead).
   const model =
     process.env["DEEP_SEEK_MODEL"] ||
     process.env["DeepSeekModel"] ||
-    "deepseek-chat"; // DeepSeek V4 Flash (latest chat model)
+    "deepseek-chat";
   const timeoutMs = options.timeoutMs ?? 120_000;
 
   const controller = new AbortController();
@@ -197,7 +220,9 @@ export async function chatCompletion(
         messages,
         temperature: options.temperature ?? 0.2,
         max_tokens: options.maxTokens ?? 4000,
-        response_format: { type: "json_object" },
+        ...(options.jsonMode === false
+          ? {}
+          : { response_format: { type: "json_object" } }),
       }),
       signal: controller.signal,
     });
@@ -228,6 +253,7 @@ export async function evaluateSingleJobWithLLM(
     const completion = await chatCompletion(messages, {
       temperature: 0.2,
       maxTokens: 2000,
+      timeoutMs: 60_000,
     });
     const content = completion.choices?.[0]?.message?.content;
     if (!content) throw new Error("LLM returned an empty response");
@@ -291,23 +317,86 @@ export function parseResumeDocument(raw: string): ResumeDocumentResult {
 }
 
 /**
- * One LLM call to generate a TAILORED RESUME for a fit job.
+ * One LLM call to generate a TAILORED RESUME for a job.
  *
- * The cover letter is produced in the SAME per-job evaluation call (fit →
- * both resume + cover letter; not-fit → neither). This second call only adds
- * the tailored resume HTML, grounded strictly in the resume + job post.
+ * Independent of evaluation — called by the dedicated `resumeWorker` when the
+ * user requests a tailored resume for a specific job. Grounded strictly in
+ * the resume + job post.
  */
 export async function generateResumeWithLLM(
   messages: ChatMessage[],
 ): Promise<ResumeDocumentResult> {
+  // Resume HTML legitimately takes ~20-40s of LLM time. Give it a 120s
+  // timeout (enough headroom) but only ONE retry — a second failure should
+  // surface to the user quickly (Service Bus re-delivery backoff would
+  // otherwise turn it into a multi-minute silent wait).
   return withRetry(async () => {
     const completion = await chatCompletion(messages, {
       temperature: 0.4,
-      // Tailored resume HTML is a full document — needs a large output budget.
-      maxTokens: 12_000,
+      // A concise one-page resume is ~2500-3500 tokens of HTML. Keeping the
+      // budget at 4000 (not 6000/12000) means the model stops generating
+      // sooner → much faster. The prompt is also trimmed (skills/reqs only),
+      // so the whole call is quick.
+      maxTokens: 4000,
+      timeoutMs: 90_000,
     });
     const content = completion.choices?.[0]?.message?.content;
     if (!content) throw new Error("LLM returned an empty response");
     return parseResumeDocument(content);
+  }, 1);
+}
+
+/**
+ * One LLM call to generate a COVER LETTER for a job.
+ *
+ * Independent of evaluation — called by the dedicated `coverLetterWorker`
+ * when the user requests a cover letter for a specific job. Returns the
+ * letter as plain text (the frontend exports it to DOCX client-side).
+ */
+export async function generateCoverLetterWithLLM(
+  messages: ChatMessage[],
+): Promise<string> {
+  // Short output — one retry max; fail fast rather than cascade retries.
+  return withRetry(async () => {
+    // Try PLAIN TEXT first (faster, no JSON wrapper to leak). DeepSeek can
+    // occasionally return an empty content in plain-text mode with a large
+    // full-context prompt, so fall back to JSON mode (very reliable) if so.
+    // NOTE: pass `messages` AS-IS (it is an array). Do NOT spread it into an
+    // object — `{ ...messages }` turns the array into `{0:…, 1:…}` which
+    // DeepSeek rejects with a 400 "Failed to deserialize the JSON body".
+    let content = await attemptCoverLetter(messages, false);
+    if (!content) {
+      content = await attemptCoverLetter(messages, true);
+    }
+    if (!content) throw new Error("LLM returned an empty response");
+
+    // Defensive: unwrap a JSON envelope if the model wrapped it anyway.
+    const trimmed = content.trim();
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const maybeJson = (fenced ? fenced[1] : trimmed).trim();
+    if (maybeJson.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(maybeJson) as Record<string, unknown>;
+        const letter = parsed.cover_letter ?? parsed.letter ?? parsed.content;
+        if (typeof letter === "string" && letter.trim()) return letter.trim();
+      } catch {
+        /* not JSON — fall through */
+      }
+    }
+    return trimmed;
+  }, 1);
+}
+
+/** One cover-letter LLM attempt. Returns the raw content (may be empty). */
+async function attemptCoverLetter(
+  messages: ChatMessage[],
+  jsonMode: boolean,
+): Promise<string | null> {
+  const completion = await chatCompletion(messages, {
+    temperature: 0.5,
+    maxTokens: 2000,
+    timeoutMs: 45_000,
+    jsonMode,
   });
+  return completion.choices?.[0]?.message?.content ?? null;
 }

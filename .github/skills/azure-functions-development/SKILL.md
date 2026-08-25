@@ -7,12 +7,12 @@ description: "JobSeek Azure Functions development: the two function apps (scrape
 
 ## The Two Function Apps
 
-| App       | Base URL                                                | Purpose                                             | Key env                                            |
-| --------- | ------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------- |
-| Scraper   | `jobsautomation-fn`                                     | Scrape job boards, push jobs, manage pipeline runs  | `NEXT_PUBLIC_AZURE_FN_URL`, `AZURE_SCRAPE_KEY`     |
-| Evaluator | `jobsautomation-evaluator` (repo: `azure/ai-evaluator`) | AI-fit scoring + tailored resumes (single function) | `NEXT_PUBLIC_EVALUATOR_URL`, `AZURE_EVALUATOR_KEY` |
+| App       | Base URL                                                | Purpose                                                    | Key env                                            |
+| --------- | ------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------- |
+| Scraper   | `jobsautomation-fn`                                     | Scrape job boards, push jobs, manage pipeline runs         | `NEXT_PUBLIC_AZURE_FN_URL`, `AZURE_SCRAPE_KEY`     |
+| Evaluator | `jobsautomation-evaluator` (repo: `azure/ai-evaluator`) | AI-fit scoring + tailored resumes/cover letters (3 queues) | `NEXT_PUBLIC_EVALUATOR_URL`, `AZURE_EVALUATOR_KEY` |
 
-The evaluator is a **separate deployable microservice** so slow/expensive LLM calls never block scraping and it scales independently. It is **queue-free** — the `evaluate` HTTP trigger runs the whole evaluation in-process and returns 202.
+The evaluator is a **separate deployable microservice** so slow/expensive LLM calls never block scraping and it scales independently. It owns its OWN Service Bus namespace with **three queues** (evaluation, resume, cover letter).
 
 ## `azure/ai-evaluator` Structure
 
@@ -20,11 +20,14 @@ The evaluator is a **separate deployable microservice** so slow/expensive LLM ca
 azure/ai-evaluator/
 ├── src/
 │   ├── index.ts
-│   ├── functions/        # evaluate (HTTP), evaluateWorker (SB queue), evaluateStatus (HTTP)
-│   ├── lib/              # runEvaluator, ai, prompts, resume, resumeDocuments, socket, serviceBus, status, supabase
+│   ├── functions/        # evaluate (HTTP), evaluateWorker (SB), evaluateStatus (HTTP),
+│   │                     # generateDocument (HTTP), resumeWorker (SB), coverLetterWorker (SB)
+│   ├── lib/              # evaluateJob, documents, ai, prompts, resume, resumeDocuments,
+│   │                     # socket, serviceBus, status, supabase
 │   ├── shared/           # shared helpers
 │   └── types/
-├── migrations/           # 001_create_evaluation_runs.sql (evaluation_runs table + evaluation_status column)
+├── migrations/           # evaluation_runs + cover_letter_status migrations
+├── infra/queues.bicep    # the evaluator's OWN Service Bus queues
 ├── host.json
 ├── local.settings.json
 ├── package.json          # npm run build (tsc), npm run watch, func host start
@@ -33,16 +36,29 @@ azure/ai-evaluator/
 
 ## Patterns
 
-- **One queue, one worker** (`evaluateWorker` queue trigger): `POST /api/evaluate` enqueues ONE message to the evaluator's OWN Service Bus queue and returns 202; the worker runs the ENTIRE evaluation in-process (scoring + cover letter + tailored resume). No function-to-function calls, no second queue. Durable via Service Bus retry (orchestrator is idempotent).
-- **In-process orchestrator** (`runEvaluator.ts`): scores each job with its own LLM call (fit + cover letter), then one more call per fit job for the tailored resume HTML.
+- **Three queues, one worker each** (`evaluateWorker`, `resumeWorker`, `coverLetterWorker`):
+  `POST /api/evaluate` enqueues ONE message per job to `evaluation-requests` and returns 202;
+  the worker SCORES each job (fit + score + reasons). For FIT jobs it enqueues ONE message
+  to `resume-requests` AND one to `cover-letter-requests`, so the DEDICATED functions generate
+  each artifact independently + in parallel. `POST /api/documents/generate` (on-demand) reuses
+  the same queues for retry / any job. No function-to-function calls. Durable via Service Bus
+  retry (idempotent: only scores `fit_score IS NULL`, preserves completed documents).
+- **Worker body** (`evaluateJob.ts`): scores each job with its own LLM call, enqueues fit docs.
+- **Document builders** (`documents.ts`): `generateTailoredResume` + `generateCoverLetterForJob`,
+  strictly owner-scoped (`.eq("user_id", userId)` on every read/write).
 - **Batching for display**: jobs grouped by `search_key` (keyword); each batch = one `evaluation_runs` row so the UI can show per-keyword progress.
-- **Socket push** (`lib/socket.ts`): the worker POSTs to the backend Express `/webhook/state` at start/progress/completion; the backend pushes a `stats` event with `evaluation` state to the user's socket.io room. Env: `STATE_WEBHOOK_URL`, `STATE_WEBHOOK_SECRET`.
+- **Socket push** (`lib/socket.ts`): the workers POST to the backend Express `/webhook/state`;
+  the backend pushes `stats` (evaluation) + `job:state` (document) events to the user's socket.io
+  room. Env: `STATE_WEBHOOK_URL`, `STATE_WEBHOOK_SECRET`.
 - **Triggers**:
-  - `evaluate` — HTTP POST `/api/evaluate`; validates + enqueues, returns 202.
-  - `evaluateWorker` — Service Bus queue trigger (evaluator's own queue); runs the whole evaluation.
+  - `evaluate` — HTTP POST `/api/evaluate`; validates + enqueues one msg/job, returns 202.
+  - `evaluateWorker` — SB queue trigger; scores one job, enqueues fit docs.
   - `evaluateStatus` — HTTP GET `/api/evaluate/{runId}`; per-batch progress.
-- **Status flow**: `pipeline_runs` (scrape) → `evaluation_runs` (per-keyword batch progress) → `pipeline_runs.evaluation_status` (queued → evaluating → completed / failed).
-- **Two service buses**: the scraper uses the backend's Service Bus; the evaluator uses its OWN (namespace + `evaluation-requests` queue).
+  - `generateDocument` — HTTP POST `/api/documents/generate`; on-demand/retry resume or cover letter.
+  - `resumeWorker` — SB queue trigger (`resume-requests`); generates + stores a tailored resume.
+  - `coverLetterWorker` — SB queue trigger (`cover-letter-requests`); generates + persists a cover letter.
+- **Status flow**: `pipeline_runs` (scrape) → `evaluation_runs` (per-keyword batch progress) → `pipeline_runs.evaluation_status` (queued → evaluating → completed / failed); `jobs.resume_status` / `jobs.cover_letter_status` stream document builds.
+- **Two service buses**: the scraper uses the backend's Service Bus; the evaluator uses its OWN (namespace + `evaluation-requests` + `resume-requests` + `cover-letter-requests` queues — see `infra/queues.bicep`).
 
 ## Local Dev
 

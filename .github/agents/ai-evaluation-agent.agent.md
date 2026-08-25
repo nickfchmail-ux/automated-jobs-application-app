@@ -32,11 +32,14 @@ You are the **AI Evaluation Agent** for JobSeek. You own the AI logic that score
 - DO NOT change the scraper (that's `azure-functions-agent`).
 - DO NOT change UI/state (that's the frontend agents).
 - Keep prompt copy consistent with the "no jargon in the UI" principle.
-- The evaluator has ONE queue + ONE worker: `evaluate` (HTTP) enqueues one
-  message and returns 202; `evaluateWorker` (queue trigger) runs the whole
-  in-process orchestrator (one LLM call per job; fit → resume too). No
-  function-to-function calls. Progress is pushed to the user's socket.io room
-  via `lib/socket.ts` → backend `/webhook/state`.
+- The evaluator has THREE independent queues: `evaluate` (HTTP) enqueues one
+  message per job and returns 202; `evaluateWorker` (queue trigger) SCORES
+  each job and, for fit jobs, enqueues one message to `resume-requests` and
+  one to `cover-letter-requests`. The DEDICATED `resumeWorker` /
+  `coverLetterWorker` functions generate each artifact independently + in
+  parallel (see `documents.ts`). No function-to-function calls. Progress is
+  pushed to the user's socket.io room via `lib/socket.ts` → backend
+  `/webhook/state` (`stats` + `job:state`).
 
 ## Approach
 

@@ -41,3 +41,35 @@ export async function notifyStateChange(
     console.warn(`[evaluator] notifyStateChange failed: ${err}`);
   }
 }
+
+/**
+ * Best-effort: tell the backend to push the CURRENT STATE OF ONE JOB to a
+ * user's WebSocket room. The backend emits a `job:state` event (scoped to
+ * the user's room) carrying the job's live fit / resume / cover-letter state.
+ *
+ * Used by the document workers so the job detail page updates instantly when
+ * a tailored resume or cover letter completes (or fails) — no polling, and
+ * Supabase Realtime remains the fallback for row changes.
+ */
+export async function notifyJobStateChange(
+  userId: string,
+  jobId: string,
+): Promise<void> {
+  if (!STATE_WEBHOOK_URL || !userId || !jobId) return;
+  try {
+    await fetch(STATE_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(STATE_WEBHOOK_SECRET
+          ? { "x-webhook-secret": STATE_WEBHOOK_SECRET }
+          : {}),
+      },
+      body: JSON.stringify({ userId, jobId, scope: "job" }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    // non-fatal — WS push is best-effort
+    console.warn(`[evaluator] notifyJobStateChange failed: ${err}`);
+  }
+}

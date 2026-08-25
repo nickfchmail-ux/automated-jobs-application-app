@@ -104,9 +104,7 @@ export default function EvaluationProgress({
   const hasStatusCounts =
     statusFitJobs > 0 || statusNotFitJobs > 0 || remainingJobs > 0;
   const fitJobs = hasStatusCounts ? statusFitJobs : fitJobsFromStream;
-  const notFitJobs = hasStatusCounts
-    ? statusNotFitJobs
-    : notFitJobsFromStream;
+  const notFitJobs = hasStatusCounts ? statusNotFitJobs : notFitJobsFromStream;
 
   const rows = [...active, ...done];
 

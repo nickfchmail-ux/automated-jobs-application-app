@@ -55,6 +55,36 @@ export function serializeJob(job: JobForEvaluation): string {
 }
 
 /**
+ * FULL job serialization for DOCUMENT GENERATION (cover letter + resume).
+ *
+ * Unlike `serializeJob` (used for fast evaluation scoring), this includes the
+ * COMPLETE job content — the full raw description (no 6000-char truncation),
+ * plus about_company, posted_date and url — so the cover-letter/resume AI
+ * sees every detail of the role. A cover letter must be written against the
+ * whole posting, not a truncated summary.
+ */
+export function serializeJobFull(job: JobForEvaluation): string {
+  return JSON.stringify({
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    salary: job.salary,
+    employment_type: job.employment_type,
+    experience_level: job.experience_level,
+    skills: job.skills,
+    responsibilities: job.responsibilities,
+    requirements: job.requirements,
+    benefits: job.benefits,
+    short_description: job.short_description,
+    about_company: job.about_company,
+    posted_date: job.posted_date,
+    url: job.url,
+    raw_description: job.raw_description ?? "",
+  });
+}
+
+/**
  * Build the prompt for a SINGLE job evaluation.
  *
  * One LLM call per job post (per the team's design). The model returns one
@@ -86,11 +116,13 @@ const RESUME_SYSTEM_PROMPT = `You are an expert resume writer. Given a candidate
 Return ONLY valid JSON — no markdown, no commentary:
 
 {
-  "resumeHtml": "<a complete, self-contained HTML document (<html><body>...) of the tailored resume. Only include facts present in the candidate resume; never invent skills, employers, titles, dates, or metrics. Re-order and emphasize what's relevant to THIS job, keep it to one page, use inline CSS, and include the candidate's contact details from the resume.>"
+  "resumeHtml": "<a complete, self-contained HTML document (<html><body>...) of the tailored resume. Include EVERY fact from the candidate resume — every skill, every role, every employer, every date range, every bullet point, every education entry, every certification, every project. NEVER omit, truncate, or summarize away any content. Re-order and emphasize what's relevant to THIS job, but KEEP ALL of it (the resume may span multiple pages — that is fine). Use inline CSS, and include the candidate's contact details from the resume.>"
 }
 
 Rules:
 - TRUTHFULNESS: every fact in the resume must come from the candidate resume. Never fabricate.
+- COMPLETENESS IS MANDATORY: do not drop any section, any role, any bullet, or any detail. If the candidate resume lists 4 jobs, list all 4. If a job has 6 bullets, include all 6.
+- NO hyperlinks: render URLs (LinkedIn, GitHub, portfolio, email) as visible plain text — never <a> tags — because hyperlinks are invisible when printed as PDF.
 - Tailor to THIS job: emphasize matching skills/experience, order sections by relevance.
 - Professional and ready to send.`;
 
@@ -102,7 +134,38 @@ export function buildResumePrompt(
     { role: "system", content: RESUME_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting:\n\n${serializeJob(job)}\n\nGenerate the tailored resume HTML JSON for this job.`,
+      content: `Candidate resume (contact included) — PRESERVE ALL OF IT:\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nGenerate the tailored resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n- Include EVERY section and EVERY entry from the candidate resume: all skills, ALL work experience (every role, employer, date range, and all bullet points), ALL education, ALL certifications/courses, ALL projects. Do NOT omit, truncate, or drop any content.\n- Tailor the ORDERING and EMPHASIS to this job (put matching skills/experience first), but keep everything.\n- Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT inside the resume — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
+    },
+  ];
+}
+
+/**
+ * Cover-letter prompt (independent generation).
+ *
+ * Used by the dedicated `coverLetterWorker` when the user asks for a cover
+ * letter for a specific job. Grounded strictly in the resume + job post —
+ * the letter never invents facts or contact details.
+ */
+const COVER_LETTER_SYSTEM_PROMPT = `You are an expert cover-letter writer. Given a candidate's real resume and a specific job posting, write a professional cover letter for that job.
+
+Return the letter as PLAIN TEXT (paragraphs separated by blank lines) — no JSON, no markdown.
+
+Rules:
+- Address the role and company specifically. Reference 2-3 concrete points from the job posting that match the candidate's experience.
+- Use the candidate's real contact details from the resume (name, email, phone) for the header and signature — never invent contact information.
+- TRUTHFULNESS: every claim must come from the candidate resume. Never fabricate skills, employers, titles, dates, or metrics.
+- Keep it concise: 3-4 short paragraphs, professional and warm.
+- Sign off with the candidate's name from the resume.`;
+
+export function buildCoverLetterPrompt(
+  resumeText: string,
+  job: JobForEvaluation,
+): ChatMessage[] {
+  return [
+    { role: "system", content: COVER_LETTER_SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nWrite a tailored cover letter for this exact role.`,
     },
   ];
 }

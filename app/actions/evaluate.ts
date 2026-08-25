@@ -20,7 +20,14 @@ import type {
 const EVALUATOR_BASE_URL =
   process.env.NEXT_PUBLIC_EVALUATOR_URL ||
   "https://jobsautomation-evaluator.azurewebsites.net";
+// Per-function key for the `evaluate` POST trigger.
 const EVALUATOR_FUNCTION_KEY = process.env.AZURE_EVALUATOR_KEY || "";
+// HOST key — authorizes EVERY function, including GET /api/evaluate/{runId}
+// (the per-function key above only unlocks the POST trigger; using it for
+// the status read returns 401, which made the fit/not-fit poller silently
+// fall back to a DB read with no fit columns → "0 fit / 0 not fit").
+const EVALUATOR_HOST_KEY =
+  process.env.AZURE_EVALUATOR_HOST_KEY || EVALUATOR_FUNCTION_KEY;
 
 // ── Trigger evaluation ────────────────────────────────────────────
 
@@ -112,7 +119,7 @@ export async function getEvaluationStatusAction(
     const res = await fetch(
       `${EVALUATOR_BASE_URL}/api/evaluate/${encodeURIComponent(runId)}`,
       {
-        headers: { "x-functions-key": EVALUATOR_FUNCTION_KEY },
+        headers: { "x-functions-key": EVALUATOR_HOST_KEY },
         signal: controller.signal,
         cache: "no-store",
       },
