@@ -59,15 +59,6 @@ export default function EvaluationProgress() {
     (n, r) => n + (r.not_fit_jobs ?? 0),
     0,
   );
-  // Prefer the status counts when the batch has reached a terminal state
-  // (authoritative + account-wide); otherwise derive from the run-scoped job
-  // stream for live in-progress updates.
-  const isTerminal = evaluationRuns.every(
-    (r) => r.status === "completed" || r.status === "failed",
-  );
-  const fitJobs = isTerminal ? statusFitJobs : fitJobsFromStream;
-  const notFitJobs = isTerminal ? statusNotFitJobs : notFitJobsFromStream;
-
   const remainingJobs = evaluationRuns.reduce(
     (n, r) =>
       n +
@@ -78,6 +69,20 @@ export default function EvaluationProgress() {
         )),
     0,
   );
+  // Prefer the authoritative account-wide status/socket counts whenever they
+  // carry real data. Previously we only used them at a terminal state, which
+  // kept fit/not-fit at 0 DURING evaluation for account-wide (search-key)
+  // evaluations — the scored jobs live under a different run than the active
+  // Redux run, so the run-scoped `jobStream` stays empty even though jobs are
+  // being scored (processedJobs increments but fit/not-fit stayed 0).
+  // Only fall back to the run-scoped jobStream when the status counts are all
+  // zero (no socket/status data has landed yet).
+  const hasStatusCounts =
+    statusFitJobs > 0 || statusNotFitJobs > 0 || remainingJobs > 0;
+  const fitJobs = hasStatusCounts ? statusFitJobs : fitJobsFromStream;
+  const notFitJobs = hasStatusCounts
+    ? statusNotFitJobs
+    : notFitJobsFromStream;
 
   const rows = [...active, ...done];
 
