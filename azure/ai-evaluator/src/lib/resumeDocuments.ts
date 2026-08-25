@@ -50,10 +50,34 @@ export async function storeGeneratedResume(params: {
   const { userId, jobId, html } = params;
   const sb = getSupabase();
   const baseName = `${userId}-${jobId}`;
-  const fileName = `${baseName}.html`;
 
   return withRetry(async () => {
-    // Idempotent — a regenerated resume overwrites the previous one.
+    // Determine the NEXT version number by listing existing files for this
+    // job (e.g. <base>-v1.html, <base>-v2.html, …). Each generation is kept
+    // as its own version so the user can flip between the original and the
+    // fine-tuned resume (carousel/version nav in the overlay).
+    let version = 1;
+    try {
+      const { data: files, error: listErr } = await sb.storage
+        .from(GENERATED_BUCKET)
+        .list("", { search: baseName });
+      if (!listErr && files) {
+        const existing = files
+          .map((f) => f.name)
+          .filter((n) => n.startsWith(`${baseName}-v`))
+          .map((n) => {
+            const m = n.match(/-v(\d+)\.html$/i);
+            return m ? parseInt(m[1], 10) : 0;
+          })
+          .filter((n) => !Number.isNaN(n));
+        if (existing.length) version = Math.max(...existing) + 1;
+      }
+    } catch {
+      /* fall through — start at v1 */
+    }
+
+    const fileName = `${baseName}-v${version}.html`;
+
     const { error: uploadErr } = await sb.storage
       .from(GENERATED_BUCKET)
       .upload(fileName, Buffer.from(html, "utf8"), {
@@ -70,7 +94,7 @@ export async function storeGeneratedResume(params: {
     const { data } = sb.storage.from(GENERATED_BUCKET).getPublicUrl(fileName);
     const resumeUrl = data.publicUrl;
 
-    // Tracking row so the frontend can retrieve it per job (Realtime).
+    // Tracking row so the frontend can retrieve the LATEST per job (Realtime).
     const { error: upsertErr } = await sb.from("generated_resumes").upsert(
       {
         user_id: userId,

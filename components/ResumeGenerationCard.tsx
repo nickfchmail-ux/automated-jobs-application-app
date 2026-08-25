@@ -2,8 +2,8 @@
 
 import { triggerResumeAction } from "@/app/actions/documents";
 import DotLoader from "@/components/DotLoader";
+import DocumentPreviewOverlay from "@/components/DocumentPreviewOverlay";
 import { useJobState } from "@/components/JobStateProvider";
-import ResumePreviewOverlay from "@/components/ResumePreviewOverlay";
 import { resumeStatusCopy } from "@/lib/funnel";
 import { useState } from "react";
 
@@ -51,6 +51,9 @@ export default function ResumeGenerationCard({
   // with that instruction appended to the prompt.
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
   const [refinement, setRefinement] = useState("");
+  // True while a fine-tune regeneration is in flight — shows a "Regenerating…"
+  // state in the overlay so the user knows it's processing.
+  const [regenerating, setRegenerating] = useState(false);
 
   async function handleGenerateWithRefinement() {
     const note = refinement.trim();
@@ -59,11 +62,12 @@ export default function ResumeGenerationCard({
       return;
     }
     setActionError(null);
-    setFineTuneOpen(false);
+    setRegenerating(true);
     setRequesting(true);
     const res = await triggerResumeAction(jobId, note);
     setRequesting(false);
     if (!res.ok) {
+      setRegenerating(false);
       setActionError(
         /resume/i.test(res.error)
           ? "Upload a resume first, then try again."
@@ -71,6 +75,9 @@ export default function ResumeGenerationCard({
       );
       return;
     }
+    // Success → show "Regenerating…" in the overlay + the card's building
+    // state. Realtime/socket confirm `building` → `completed`. No auto-open —
+    // the user can open the preview from the card or the top nav bar.
     setOptimisticBuilding(true);
     setRefinement("");
   }
@@ -223,67 +230,87 @@ export default function ResumeGenerationCard({
             className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700 p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                Fine-tune your resume
-              </h3>
-              <button
-                onClick={() => setFineTuneOpen(false)}
-                className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-                aria-label="Close"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-              Tell us what to adjust — e.g. &ldquo;make it more concise&rdquo;,
-              &ldquo;emphasize my data-entry experience&rdquo;, or &ldquo;fix
-              the wording of the summary&rdquo;. We&apos;ll regenerate using
-              your note, your base resume, and the full job posting.
-            </p>
-            <textarea
-              value={refinement}
-              onChange={(e) => setRefinement(e.target.value)}
-              rows={5}
-              placeholder="e.g. Emphasize my document processing and Excel skills; keep it to one page."
-              className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none"
-            />
-            <div className="flex items-center justify-end gap-2 mt-4">
-              <button
-                onClick={() => setFineTuneOpen(false)}
-                className="text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleGenerateWithRefinement}
-                disabled={requesting}
-                className="text-sm font-semibold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
-              >
-                {requesting ? "Regenerating…" : "Regenerate resume"}
-              </button>
-            </div>
+            {regenerating ? (
+              /* Processing state — clear feedback that regeneration is running */
+              <div className="py-8 flex flex-col items-center gap-3 text-center">
+                <DotLoader dotClassName="bg-indigo-500" />
+                <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+                  Regenerating your resume…
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Applying your changes with your base resume and the full job
+                  posting. This usually takes under a minute.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                    Fine-tune your resume
+                  </h3>
+                  <button
+                    onClick={() => setFineTuneOpen(false)}
+                    className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                    aria-label="Close"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                  Tell us what to adjust — e.g. &ldquo;make it more
+                  concise&rdquo;, &ldquo;emphasize my data-entry
+                  experience&rdquo;, or &ldquo;fix the wording of the
+                  summary&rdquo;. We&apos;ll regenerate using your note, your
+                  base resume, and the full job posting.
+                </p>
+                <textarea
+                  value={refinement}
+                  onChange={(e) => setRefinement(e.target.value)}
+                  rows={5}
+                  placeholder="e.g. Emphasize my document processing and Excel skills; keep it to one page."
+                  className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none"
+                />
+                <div className="flex items-center justify-end gap-2 mt-4">
+                  <button
+                    onClick={() => setFineTuneOpen(false)}
+                    className="text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleGenerateWithRefinement}
+                    disabled={requesting}
+                    className="text-sm font-semibold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
+                  >
+                    {requesting ? "Starting…" : "Regenerate resume"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* Resume preview overlay (not a new browser tab). Conditionally
-          mounted so it starts fresh (no stale HTML) each time it opens. */}
+      {/* Unified preview overlay with a top nav bar (Resume | Cover Letter).
+          Conditionally mounted so it starts fresh each time it opens. */}
       {previewOpen && (
-        <ResumePreviewOverlay
+        <DocumentPreviewOverlay
           jobId={jobId}
+          title={title}
+          company={company}
+          type="resume"
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
         />
