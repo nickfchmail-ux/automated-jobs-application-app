@@ -1,11 +1,14 @@
 "use client";
 
-import { triggerCoverLetterAction } from "@/app/actions/documents";
+import {
+  getJobDocumentStateAction,
+  triggerCoverLetterAction,
+} from "@/app/actions/documents";
 import DocumentPreviewOverlay from "@/components/DocumentPreviewOverlay";
 import DotLoader from "@/components/DotLoader";
 import { useJobState } from "@/components/JobStateProvider";
 import { coverLetterStatusCopy } from "@/lib/funnel";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const TONE_TEXT: Record<string, string> = {
   neutral: "text-zinc-500 dark:text-zinc-400",
@@ -103,11 +106,55 @@ export default function CoverLetterGenerationCard({
       return;
     }
     // Success → show "Regenerating…" + the card's building state. Realtime /
-    // socket confirm `building` → `completed`. No auto-open — the user can
+    // socket confirm `building` → `completed` (see the effect below that
+    // clears `regenerating` at a terminal state). No auto-open — the user can
     // open the preview from the card or the overlay's version nav bar.
     setOptimisticBuilding(true);
     setRefinement("");
   }
+
+  // Clear the "Regenerating…" overlay state once the server reaches a
+  // TERMINAL state (completed or failed). Without this, the fine-tune overlay
+  // would sit on "Regenerating…" forever — the stale loop the user hit.
+  useEffect(() => {
+    if (coverLetterStatus === "completed" || coverLetterStatus === "failed") {
+      setRegenerating(false);
+      setOptimisticBuilding(false);
+      setFineTuneOpen(false);
+      if (coverLetterStatus === "failed") {
+        setActionError("The refinement didn't finish. You can try again.");
+      }
+    }
+  }, [coverLetterStatus]);
+
+  // Guaranteed fallback while a fine-tune regeneration is in flight: poll the
+  // document state so the "Regenerating…" overlay ALWAYS clears to the real
+  // terminal state, even if the socket/Realtime event is missed.
+  useEffect(() => {
+    if (!regenerating || !jobId) return;
+    let alive = true;
+    async function check() {
+      if (!alive) return;
+      const res = await getJobDocumentStateAction(jobId);
+      if (!alive || !res.ok) return;
+      if (res.state.cover_letter_status === "completed") {
+        setRegenerating(false);
+        setOptimisticBuilding(false);
+        setFineTuneOpen(false);
+      } else if (res.state.cover_letter_status === "failed") {
+        setRegenerating(false);
+        setOptimisticBuilding(false);
+        setFineTuneOpen(false);
+        setActionError("The refinement didn't finish. You can try again.");
+      }
+    }
+    void check();
+    const interval = setInterval(check, 3000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [regenerating, jobId]);
 
   return (
     <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
