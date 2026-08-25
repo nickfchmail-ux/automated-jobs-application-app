@@ -284,14 +284,6 @@ export default function CoverLetterGenerationCard({
           </button>
           <button
             type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {downloading ? "Exporting…" : "Download Word"}
-          </button>
-          <button
-            type="button"
             onClick={() => setFineTuneOpen(true)}
             className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
           >
@@ -467,6 +459,35 @@ export default function CoverLetterGenerationCard({
                         />
                       </svg>
                       Copy
+                    </>
+                  )}
+                </button>
+                {/* Download the CURRENT active letter as a .docx. Lives in the
+                    overlay so the card body stays clean. */}
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50"
+                >
+                  {downloading ? (
+                    <span>Exporting…</span>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
+                      </svg>
+                      Download Word
                     </>
                   )}
                 </button>
