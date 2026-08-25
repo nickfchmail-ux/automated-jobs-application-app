@@ -289,7 +289,7 @@ export function useRealtimeRun(enabled = true) {
           if (data.summary) dispatch(runSummaryUpdated(data.summary));
 
           // If this event is for the active run, surface the run-level
-          // funnel + per-board state + evaluation state live.
+          // funnel + per-board state live.
           if (data.runId && runIdRef.current === data.runId) {
             if (data.counts) dispatch(runCountsUpdated(data.counts));
             if (data.boards) {
@@ -299,34 +299,39 @@ export function useRealtimeRun(enabled = true) {
               dispatch(runBoardsUpdated(data.boards));
               completeIfAllBoardsDone(boardStagesRef.current);
             }
-            // Evaluation state pushed over the socket by the evaluator via
-            // the backend webhook. Supabase Realtime remains a fallback.
-            if (data.evaluation) {
-              if (data.evaluation.status) {
-                dispatch(
-                  evaluationStatusUpdated(
-                    data.evaluation.status as EvaluationStatus,
+          }
+
+          // Evaluation state pushed over the socket by the evaluator via the
+          // backend webhook. This is ACCOUNT-WIDE (a search-key evaluation
+          // spans multiple runs), so it is processed REGARDLESS of which
+          // runId the event carries — gating it on `runIdRef.current` made the
+          // fit/not-fit counts silently drop to 0 when the evaluator's runId
+          // didn't match the active run in Redux.
+          if (data.evaluation) {
+            if (data.evaluation.status) {
+              dispatch(
+                evaluationStatusUpdated(
+                  data.evaluation.status as EvaluationStatus,
+                ),
+              );
+            }
+            if (data.evaluation.batches?.length) {
+              // Map the socket's camelCase fit/not-fit/remaining into the
+              // Redux snake_case shape used by the progress table.
+              dispatch(
+                evaluationRunsUpdated(
+                  data.evaluation.batches.map(
+                    (b) =>
+                      ({
+                        ...b,
+                        id: b.id ?? "",
+                        fit_jobs: b.fitJobs ?? 0,
+                        not_fit_jobs: b.notFitJobs ?? 0,
+                        remaining_jobs: b.remainingJobs ?? 0,
+                      }) as EvaluationRunRow,
                   ),
-                );
-              }
-              if (data.evaluation.batches?.length) {
-                // Map the socket's camelCase fit/not-fit/remaining into the
-                // Redux snake_case shape used by the progress table.
-                dispatch(
-                  evaluationRunsUpdated(
-                    data.evaluation.batches.map(
-                      (b) =>
-                        ({
-                          ...b,
-                          id: b.id ?? "",
-                          fit_jobs: b.fitJobs ?? 0,
-                          not_fit_jobs: b.notFitJobs ?? 0,
-                          remaining_jobs: b.remainingJobs ?? 0,
-                        }) as EvaluationRunRow,
-                    ),
-                  ),
-                );
-              }
+                ),
+              );
             }
           }
 

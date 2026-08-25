@@ -1,9 +1,9 @@
 "use client";
 
 import { evaluationBatchCopy } from "@/lib/funnel";
+import type { RootState } from "@/state/global/store";
 import type { EvaluationRunRow } from "@/types/api";
 import { useSelector } from "react-redux";
-import type { RootState } from "@/state/global/store";
 
 /**
  * The "Evaluating…" panel. Each row is one keyword batch from the AI
@@ -18,6 +18,7 @@ export default function EvaluationProgress() {
   const evaluationStatus = useSelector(
     (s: RootState) => s.run.evaluationStatus,
   );
+  const jobStream = useSelector((s: RootState) => s.run.jobStream);
 
   if (evaluationRuns.length === 0) return null;
 
@@ -37,11 +38,36 @@ export default function EvaluationProgress() {
     (n, r) => n + (r.failed_jobs ?? 0),
     0,
   );
-  const fitJobs = evaluationRuns.reduce((n, r) => n + (r.fit_jobs ?? 0), 0);
-  const notFitJobs = evaluationRuns.reduce(
+
+  // ── Fit / not-fit / remaining ────────────────────────────────────────
+  // Use the Redux `evaluationRuns.fit_jobs`/`not_fit_jobs` as the PRIMARY
+  // source — EvaluationStep now refreshes these from the evaluator's status
+  // endpoint (account-wide, authoritative) when evaluation completes, so they
+  // are correct. Fall back to deriving from the run-scoped `jobStream` (for
+  // run-scoped evaluations) when no socket/status counts are available.
+  const scoredJobs = jobStream.filter(
+    (j) => j.fit_score !== null && j.fit_score !== undefined,
+  );
+  const fitJobsFromStream = scoredJobs.filter((j) => j.fit === true).length;
+  const notFitJobsFromStream = scoredJobs.filter((j) => j.fit === false).length;
+
+  const statusFitJobs = evaluationRuns.reduce(
+    (n, r) => n + (r.fit_jobs ?? 0),
+    0,
+  );
+  const statusNotFitJobs = evaluationRuns.reduce(
     (n, r) => n + (r.not_fit_jobs ?? 0),
     0,
   );
+  // Prefer the status counts when the batch has reached a terminal state
+  // (authoritative + account-wide); otherwise derive from the run-scoped job
+  // stream for live in-progress updates.
+  const isTerminal = evaluationRuns.every(
+    (r) => r.status === "completed" || r.status === "failed",
+  );
+  const fitJobs = isTerminal ? statusFitJobs : fitJobsFromStream;
+  const notFitJobs = isTerminal ? statusNotFitJobs : notFitJobsFromStream;
+
   const remainingJobs = evaluationRuns.reduce(
     (n, r) =>
       n +

@@ -49,7 +49,7 @@ export default function EvaluationStep() {
   // match control must be visible whenever there's anything left to match,
   // even after a page reload (when Redux has no active run). `runId` is only
   // used to highlight the current search's key.
-  const { keys, reload } = useSearchKeys(runId, true, evaluationStatus);
+  const { keys, reload, loaded } = useSearchKeys(runId, true, evaluationStatus);
   const [selected, setSelected] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
@@ -91,12 +91,85 @@ export default function EvaluationStep() {
 
   const selectedKey = keys.find((k) => k.searchKey === selected);
   const isCurrentRunKey = selected === defaultKey && !!defaultKey;
+  const [refreshing, setRefreshing] = useState(false);
+
+  /**
+   * Re-fetch the account-wide search keys so a just-matched key drops out and
+   * any remaining keys (with unevaluated posts) reappear. Used by the
+   * "Match another key" button and on evaluation completion.
+   */
+  async function refreshKeys() {
+    setRefreshing(true);
+    await reload();
+    setRefreshing(false);
+  }
+
+  // The run whose evaluation state we track — the active run, else the
+  // selected key's run (survives page reload when Redux has no active run).
+  const activeRunId = runId ?? selectedKey?.runId ?? null;
+
+  // Auto-refresh keys once evaluation reaches a terminal state — this drops
+  // the just-matched key (now fully scored) and surfaces any remaining keys.
+  useEffect(() => {
+    if (evaluationStatus === "completed" || evaluationStatus === "failed") {
+      const t = setTimeout(() => void refreshKeys(), 1200);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evaluationStatus]);
+
+  /**
+   * FINAL authoritative refresh when the evaluation completes.
+   *
+   * The socket `stats` event can carry stale fit/not-fit counts (a race with
+   * the job-row writes), and for ACCOUNT-WIDE (search-key) evaluations the
+   * scored jobs span multiple runs — so the run-scoped `jobStream` misses
+   * them and the panel can show "0 fit / 0 not fit". Fetching the evaluator's
+   * status endpoint (which computes fit/not-fit account-wide, correctly)
+   * once more and dispatching it guarantees the completed panel shows the
+   * real numbers.
+   */
+  useEffect(() => {
+    if (evaluationStatus !== "completed" || !activeRunId) return;
+    const id = activeRunId;
+    let disposed = false;
+    const t = setTimeout(async () => {
+      const status = await getEvaluationStatusAction(id);
+      if (disposed || !status.ok || !status.data.batches?.length) return;
+      dispatch(
+        evaluationRunsUpdated(
+          status.data.batches.map((b) => ({
+            id: b.id,
+            pipeline_run_id: id,
+            user_id: "",
+            keyword: b.keyword,
+            status: b.status as EvaluationRunRow["status"],
+            total_jobs: b.totalJobs,
+            processed_jobs: b.processedJobs,
+            failed_jobs: b.failedJobs,
+            fit_jobs: b.fitJobs ?? 0,
+            not_fit_jobs: b.notFitJobs ?? 0,
+            remaining_jobs: b.remainingJobs ?? 0,
+            last_error: b.lastError,
+            started_at: null,
+            completed_at: b.updatedAt,
+            created_at: b.updatedAt ?? new Date().toISOString(),
+            updated_at: b.updatedAt ?? new Date().toISOString(),
+          })),
+        ),
+      );
+    }, 800);
+    return () => {
+      disposed = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evaluationStatus, activeRunId]);
 
   // ── Live progress poller (fallback to Realtime) ────────────────────
   // While an evaluation is active, poll the evaluator's REST status + read
   // `evaluation_runs` directly so the UI never freezes on "0 of 0 jobs"
   // even if Supabase Realtime isn't delivering the table's changes.
-  const activeRunId = runId ?? selectedKey?.runId ?? null;
   useEffect(() => {
     if (!evaluationActive || !activeRunId) return;
     const id = activeRunId; // narrow to string for the async closure
@@ -297,12 +370,21 @@ export default function EvaluationStep() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => router.push("/matches")}
-              className="shrink-0 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg px-3 py-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors"
-            >
-              View matches →
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={refreshKeys}
+                disabled={refreshing}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg px-3 py-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors disabled:opacity-50"
+              >
+                {refreshing ? "Checking…" : "Match another search"}
+              </button>
+              <button
+                onClick={() => router.push("/matches")}
+                className="shrink-0 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg px-3 py-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors"
+              >
+                View matches →
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -313,7 +395,69 @@ export default function EvaluationStep() {
   const failedCopy = evaluationStatus === "failed";
 
   // Nothing left to match and it never ran → quiet.
-  if (keys.length === 0 && !failedCopy) return null;
+  if (keys.length === 0 && !failedCopy) {
+    // Still loading the account-wide search keys → show a spinner instead of
+    // a flash of "nothing left" or an empty dropdown.
+    if (!loaded) {
+      return (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-[var(--ink-soft)]"
+        >
+          <svg
+            className="w-4 h-4 animate-spin motion-reduce:hidden"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          <span>Loading your search keys…</span>
+        </div>
+      );
+    }
+
+    // Loaded, but genuinely nothing left to match → explain why instead of
+    // showing an empty dropdown.
+    return (
+      <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-[var(--ink-soft)]">
+        {counts.fit > 0 ? (
+          <p>
+            You've matched every job in your search.{" "}
+            <strong className="font-semibold text-[var(--ink)]">
+              {counts.fit || 0} great fit
+              {(counts.fit || 0) !== 1 ? "s" : ""}
+            </strong>{" "}
+            ready to review in{" "}
+            <button
+              onClick={() => router.push("/matches")}
+              className="text-[var(--accent)] hover:underline font-medium"
+            >
+              Matches
+            </button>
+            .
+          </p>
+        ) : (
+          <p>
+            There are no jobs left to match right now. Run a new search or
+            scrape more jobs to get fit recommendations for your resume.
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return renderSelector(failedCopy);
 
@@ -384,8 +528,9 @@ export default function EvaluationStep() {
                   className="absolute z-20 mt-1 w-full max-h-52 overflow-y-auto rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 shadow-lg py-1"
                 >
                   {keys.length === 0 && (
-                    <li className="px-4 py-2 text-sm text-[var(--ink-faint)]">
-                      Nothing left to match.
+                    <li className="px-4 py-3 text-sm text-[var(--ink-faint)]">
+                      All your search keys have been matched — there's nothing
+                      left to score right now.
                     </li>
                   )}
                   {keys.map((k) => {
