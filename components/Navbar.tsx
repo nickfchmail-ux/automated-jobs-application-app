@@ -216,7 +216,7 @@ export default function Navbar() {
           <img
             src="/JobSeek.png"
             alt="JobSeek"
-            className="w-full h-auto max-h-14 object-contain"
+            className="w-full h-auto object-contain"
           />
         </Link>
       </div>
