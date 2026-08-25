@@ -30,6 +30,13 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
   ]);
   const [, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Last successfully-submitted search — used to RETRY a stuck/blocked run
+  // with the exact same keyword + boards.
+  const [lastSearch, setLastSearch] = useState<{
+    keyword: string;
+    pages: number;
+    boards: string[];
+  } | null>(null);
 
   // Live connection: socket.io funnel + Supabase Realtime job rows
   useRealtimeRun(true);
@@ -88,6 +95,11 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         return;
       }
 
+      setLastSearch({
+        keyword: keyword.trim(),
+        pages,
+        boards: [...boards],
+      });
       dispatch(runQueued({ runId: result.runId, keyword: keyword.trim() }));
     });
   }
@@ -95,6 +107,32 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
   function handleRetry() {
     setError(null);
     handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+  }
+
+  /** Re-run the last submitted search (same keyword/boards) — used when a run
+   *  is stuck because one board couldn't be searched. */
+  function handleRetrySearch() {
+    if (!lastSearch) return;
+    setError(null);
+    dispatch(
+      runStarting({ keyword: lastSearch.keyword, boards: lastSearch.boards }),
+    );
+    startTransition(async () => {
+      const result = await startScrapeAction({
+        keyword: lastSearch.keyword,
+        pages: lastSearch.pages,
+        boards: lastSearch.boards,
+      });
+      if (!result.ok) {
+        setError(
+          "We couldn't retry the search. Please try again in a moment.",
+        );
+        return;
+      }
+      dispatch(
+        runQueued({ runId: result.runId, keyword: lastSearch.keyword }),
+      );
+    });
   }
 
   return (
@@ -289,7 +327,7 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         phase === "scraping" ||
         phase === "processing" ||
         phase === "retrying" ||
-        phase === "starting") && <LiveRunCard />}
+        phase === "starting") && <LiveRunCard onRetry={handleRetrySearch} />}
     </div>
   );
 }

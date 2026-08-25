@@ -21,7 +21,13 @@ const BOARD_META: Record<string, { label: string; color: string }> = {
  *   → Matching jobs against your resume… → Done ✓
  * No refresh, no jargon. Board chips light up as the search fans out.
  */
-export default function LiveRunCard() {
+export default function LiveRunCard({
+  onRetry,
+}: {
+  /** Re-run the current search (same keyword + boards) — used when a board
+   *  couldn't be searched so the run doesn't stay stuck. */
+  onRetry?: () => void;
+}) {
   const dispatch = useDispatch();
   const {
     phase,
@@ -315,12 +321,37 @@ export default function LiveRunCard() {
         </div>
 
         {active && !allBoardsDone && (
-          <button
-            onClick={() => dispatch(runReset())}
-            className="shrink-0 text-xs font-medium text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
-          >
-            Cancel
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Retry — shown when a board couldn't be searched / was blocked
+                so the run doesn't stay stuck. Re-runs the same search. */}
+            {(anyBoardFailed || anyBoardBlocked) && onRetry && (
+              <button
+                onClick={onRetry}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                Retry
+              </button>
+            )}
+            <button
+              onClick={() => dispatch(runReset())}
+              className="shrink-0 text-xs font-medium text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         )}
       </div>
 
