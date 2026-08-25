@@ -110,21 +110,33 @@ export function buildSingleJobPrompt(
  * The cover letter is produced by the per-job evaluation call. This separate
  * call generates ONLY the tailored resume HTML, grounded strictly in the
  * sanitized resume + the job post — never inventing facts.
+ *
+ * The resume must be CLEARLY customized for the specific job — not a verbatim
+ * copy of the source resume. For a "Security" role, the summary and bullets
+ * must be reframed around security (access control, IAM, compliance, audits,
+ * risk) even if the source resume is a developer resume — the candidate's real
+ * IAM/access-control experience gets promoted to the top and reworded in the
+ * role's language.
  */
-const RESUME_SYSTEM_PROMPT = `You are an expert resume writer. Given a candidate's real resume and a specific job posting, produce a TAILORED resume (HTML) for that job.
+const RESUME_SYSTEM_PROMPT = `You are an expert resume writer. Given a candidate's real resume and a specific job posting, produce a TAILORED resume (HTML) that is CLEARLY customized for that job — NOT a verbatim copy of the source resume.
 
 Return ONLY valid JSON — no markdown, no commentary:
 
 {
-  "resumeHtml": "<a complete, self-contained HTML document (<html><body>...) of the tailored resume. Include EVERY fact from the candidate resume — every skill, every role, every employer, every date range, every bullet point, every education entry, every certification, every project. NEVER omit, truncate, or summarize away any content. Re-order and emphasize what's relevant to THIS job, but KEEP ALL of it (the resume may span multiple pages — that is fine). Use inline CSS, and include the candidate's contact details from the resume.>"
+  "resumeHtml": "<a complete, self-contained HTML document (<html><body>...) of the tailored resume. Rewrite and restructure the source resume so it is optimized for THIS job. Include the candidate's contact details from the resume.>"
 }
 
+HOW TO TAILOR (this is the whole point — do NOT just echo the source resume):
+- REWRITE each work-experience bullet so it is framed around what THIS job asks for. Reuse the candidate's real facts but reword them to mirror the job's keywords, responsibilities and required skills. E.g. if the job stresses 'access control' and the resume says 'implemented ID and Access Management (IAM) features', write 'designed and implemented role-based access control (RBAC) and IAM to secure admin portals'.
+- OPEN with a PROFESSIONAL SUMMARY written specifically for this role — name the role/industry and lead with the 2-3 strengths from the resume that match the posting (e.g. for a security role: IAM/access control, compliance, data handling, audits).
+- REORDER sections and list skills so the most relevant ones come first; keep the full skill set.
+- KEEP every section and every job/project/education entry — but compress or re-emphasize older/less-relevant entries rather than listing every original bullet verbatim (2-4 strong, tailored bullets per role is ideal).
+- Preserve every hard fact: employers, titles, date ranges, education, certifications, project names, links, and contact details. Never invent facts, metrics, employers, or skills.
+
 Rules:
-- TRUTHFULNESS: every fact in the resume must come from the candidate resume. Never fabricate.
-- COMPLETENESS IS MANDATORY: do not drop any section, any role, any bullet, or any detail. If the candidate resume lists 4 jobs, list all 4. If a job has 6 bullets, include all 6.
-- NO hyperlinks: render URLs (LinkedIn, GitHub, portfolio, email) as visible plain text — never <a> tags — because hyperlinks are invisible when printed as PDF.
-- Tailor to THIS job: emphasize matching skills/experience, order sections by relevance.
-- Professional and ready to send.`;
+- TRUTHFULNESS: every claim must trace to the candidate resume. Never fabricate.
+- NO hyperlinks: render URLs (LinkedIn, GitHub, portfolio, email) as visible plain text — never <a> tags — because hyperlinks are invisible when printed as PDF. Write them like "GitHub: github.com/user" not "<a href=...>".
+- Professional, A4 print-friendly, inline CSS, ready to send.`;
 
 export function buildResumePrompt(
   resumeText: string,
@@ -134,7 +146,7 @@ export function buildResumePrompt(
     { role: "system", content: RESUME_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `Candidate resume (contact included) — PRESERVE ALL OF IT:\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nGenerate the tailored resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n- Include EVERY section and EVERY entry from the candidate resume: all skills, ALL work experience (every role, employer, date range, and all bullet points), ALL education, ALL certifications/courses, ALL projects. Do NOT omit, truncate, or drop any content.\n- Tailor the ORDERING and EMPHASIS to this job (put matching skills/experience first), but keep everything.\n- Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT inside the resume — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
+      content: `Candidate resume (contact included):\n\n${resumeText}\n\n---\n\nJob posting (FULL — read the entire description, responsibilities, requirements, benefits and company info):\n\n${serializeJobFull(job)}\n\nGenerate the TAILORED resume HTML JSON for this job.\n\nCRITICAL INSTRUCTIONS:\n1. DO NOT reproduce the source resume verbatim. REWRITE it so it is visibly tailored to THIS job: a custom professional summary naming this role, bullets rewritten to mirror the job's requirements/keywords, and the most relevant skills/experience listed first.\n2. Keep EVERY section and EVERY job/project/education entry and every hard fact (employers, titles, dates, certifications, project links). Compress older/less-relevant detail rather than dropping it.\n3. Use inline CSS, print-friendly (A4), and render any URLs (LinkedIn, GitHub, portfolio, email) as visible TEXT — do NOT use hyperlinks (<a>), because links are invisible when the resume is printed as PDF.`,
     },
   ];
 }
