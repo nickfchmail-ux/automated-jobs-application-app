@@ -334,7 +334,8 @@ export default function EvaluationStep() {
   // Only while the scoped batches are still running — once they're done we
   // drop into the completed view below (even if the global evaluationStatus
   // still says evaluating due to another key's batch or a stale socket event).
-  if (evaluationActive && !scopedDone) {
+  // `!dismissed` lets the "Back to match" button exit this live view too.
+  if (evaluationActive && !scopedDone && !dismissed) {
     return (
       <div className="space-y-4">
         {justStarted && (
