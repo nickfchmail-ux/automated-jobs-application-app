@@ -125,6 +125,19 @@ export default function EvaluationStep() {
     setRefreshing(false);
   }
 
+  /**
+   * Leave the completed confirmation and return to the match dropdown.
+   * Resets the local `didMatch` flag so the "All matched" confirmation is
+   * dismissed and the normal selector (or the "nothing left to match"
+   * explanation) renders again, then refreshes the search keys so any
+   * newly-available key reappears in the dropdown.
+   */
+  async function backToMatch() {
+    setDidMatch(false);
+    setEvalError(null);
+    await refreshKeys();
+  }
+
   // The run whose evaluation state we track — the active run, else the
   // selected key's run (survives page reload when Redux has no active run).
   const activeRunId = runId ?? selectedKey?.runId ?? null;
@@ -405,11 +418,24 @@ export default function EvaluationStep() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={refreshKeys}
+                onClick={backToMatch}
                 disabled={refreshing}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-lg px-3 py-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-900 transition-colors disabled:opacity-50"
               >
-                {refreshing ? "Checking…" : "Match another search"}
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                  />
+                </svg>
+                {refreshing ? "Refreshing…" : "Back to match"}
               </button>
               <button
                 onClick={() => router.push("/matches")}
