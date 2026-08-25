@@ -40,7 +40,7 @@ function normalizeKey(s: string): string {
 export default function EvaluationStep() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { runId, keyword, counts, evaluationStatus } = useSelector(
+  const { runId, keyword, evaluationStatus, evaluationRuns } = useSelector(
     (s: RootState) => s.run,
   );
   const [, startTransition] = useTransition();
@@ -55,7 +55,28 @@ export default function EvaluationStep() {
   const [evalError, setEvalError] = useState<string | null>(null);
   const [evalRequesting, setEvalRequesting] = useState(false);
   const [justStarted, setJustStarted] = useState(false);
+  // True once the user triggers a match THIS session. Guards the
+  // "All matched / was matched" confirmation so a STALE account-wide
+  // `completed` status (from a previous session or the socket's on-connect
+  // evaluation state) doesn't flash "All matched — 0 great fits" when the
+  // user just landed on the page.
+  const [didMatch, setDidMatch] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Authoritative fit count for the CURRENT match key — from the account-wide
+  // socket/status `evaluationRuns` (the Redis funnel `counts.fit` is never
+  // updated by the evaluator, so it stays 0). Used by the completed
+  // confirmation instead of `counts.fit`. Note: `selected` may be "" while
+  // keys are still loading, so fall back to summing the run's own batches.
+  const selectedKeyNorm = selected.trim().toLowerCase().replace(/\s+/g, "_");
+  const completedFit = evaluationRuns
+    .filter((r) =>
+      selectedKeyNorm
+        ? (r.keyword ?? "").toLowerCase().replace(/\s+/g, "_") ===
+          selectedKeyNorm
+        : true,
+    )
+    .reduce((n, r) => n + (r.fit_jobs ?? 0), 0);
 
   const defaultKey = useMemo(
     () => (keyword ? normalizeKey(keyword) : ""),
@@ -248,6 +269,7 @@ export default function EvaluationStep() {
     }
     setEvalError(null);
     setJustStarted(false);
+    setDidMatch(true);
     setEvalRequesting(true);
     dispatch(runEvaluating());
 
@@ -330,8 +352,11 @@ export default function EvaluationStep() {
   }
 
   // Evaluation just finished — show a clear "done" confirmation so the user
-  // never doubts the evaluation ran.
-  if (evaluationStatus === "completed") {
+  // never doubts the evaluation ran. Only when the user ACTUALLY triggered a
+  // match this session — a stale account-wide `completed` status (socket
+  // on-connect for previously-matched keys) must not flash "All matched"
+  // with "0 great fits" on a fresh page load.
+  if (evaluationStatus === "completed" && didMatch) {
     return (
       <div className="space-y-4">
         {keys.length > 0 ? (
@@ -344,8 +369,8 @@ export default function EvaluationStep() {
               <strong className="font-semibold">
                 {selectedKey?.keyword ?? "Your search"}
               </strong>{" "}
-              was matched. {counts.fit || 0} great fit
-              {(counts.fit || 0) !== 1 ? "s" : ""} ready to review.
+              was matched. {completedFit} great fit
+              {completedFit !== 1 ? "s" : ""} ready to review.
             </div>
             {renderSelector()}
           </>
@@ -373,8 +398,8 @@ export default function EvaluationStep() {
                   All matched — nothing left to score.
                 </p>
                 <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80">
-                  {counts.fit || 0} great fit
-                  {(counts.fit || 0) !== 1 ? "s" : ""} ready to review.
+                  {completedFit} great fit
+                  {completedFit !== 1 ? "s" : ""} ready to review.
                 </p>
               </div>
             </div>
@@ -441,12 +466,12 @@ export default function EvaluationStep() {
     // showing an empty dropdown.
     return (
       <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 px-4 py-3 text-sm text-[var(--ink-soft)]">
-        {counts.fit > 0 ? (
+        {completedFit > 0 ? (
           <p>
             You&apos;ve matched every job in your search.{" "}
             <strong className="font-semibold text-[var(--ink)]">
-              {counts.fit || 0} great fit
-              {(counts.fit || 0) !== 1 ? "s" : ""}
+              {completedFit} great fit
+              {completedFit !== 1 ? "s" : ""}
             </strong>{" "}
             ready to review in{" "}
             <button

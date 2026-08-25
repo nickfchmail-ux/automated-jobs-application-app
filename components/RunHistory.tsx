@@ -24,20 +24,13 @@ const STALL_COPY = {
 const JUST_NOW_MIN = 1;
 
 /**
- * Derive a plain-English state + tone from a run's funnel counters.
+ * Derive a plain-English state + tone for a run.
  *
- * The Express REST response doesn't carry a status column — only the funnel
- * counters and `createdAt`. We infer the stage from the counters so the user
- * always knows *what* is happening, not just that something is happening:
- *
- *   processing > 0        → "Loading job details…"
- *   unique > analysed     → still finding / enriching jobs
- *   analysed > 0          → "Matching against your resume…"
- *   completed > 0         → done
- *
- * We also age-check: a run that still looks active but was created a while
- * ago is labelled "Stalled" (amber) instead of a live blue spinner, so the
- * UI never lies about a run being actively running.
+ * `status` is the authoritative `pipeline_runs.status` (now returned by
+ * /stats/runs), so a finished run always reads "Done ✓" — never an
+ * inferred "Searching the job boards…" from partial funnel counters. The
+ * funnel counters only refine the *active* stages (how many being read /
+ * found), and the age-check catches runs that look active but stalled.
  */
 type RunState = {
   label: string;
@@ -45,8 +38,21 @@ type RunState = {
   tone: "neutral" | "active" | "success" | "error" | "stalled";
 };
 
-function deriveRunState(counts: FunnelCounts, createdAt: string): RunState {
+function deriveRunState(
+  status: string | null,
+  counts: FunnelCounts,
+  createdAt: string,
+): RunState {
   const ageMin = ageInMinutes(createdAt);
+
+  // Authoritative terminal states first — a completed run is done even if
+  // the Redis funnel counters lack a `completed` bucket.
+  if (status === "completed") {
+    return { label: "Done ✓", tone: "success" };
+  }
+  if (status === "failed") {
+    return { label: "Something went wrong", tone: "error" };
+  }
 
   if ((counts.failed || 0) > 0) {
     return {
@@ -88,9 +94,14 @@ function deriveRunState(counts: FunnelCounts, createdAt: string): RunState {
     };
   }
 
-  return ageMin >= STALL_AFTER_MIN
-    ? { ...STALL_COPY, tone: "stalled" }
-    : { label: "In line…", tone: "neutral" };
+  // A run that never reported any progress → age-check it.
+  if (ageMin >= STALL_AFTER_MIN) {
+    return { ...STALL_COPY, tone: "stalled" };
+  }
+  if (status === "retrying") {
+    return { label: "Hitting a snag, retrying…", tone: "active" };
+  }
+  return { label: "In line…", tone: "neutral" };
 }
 
 function ageInMinutes(iso: string): number {
@@ -130,8 +141,13 @@ export default function RunHistory() {
       }
     }
     void load();
+    // Refresh so a run that was "In line…" settles to "Done ✓" (or a new run
+    // appears) without a page reload — the previous one-shot fetch left stale
+    // "Searching the job boards…" labels on finished runs.
+    const interval = setInterval(load, 20_000);
     return () => {
       alive = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -151,7 +167,7 @@ export default function RunHistory() {
       </div>
       <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
         {runs.slice(0, 6).map((run) => {
-          const state = deriveRunState(run.counts, run.createdAt);
+          const state = deriveRunState(run.status, run.counts, run.createdAt);
           const found = run.counts.scraped || 0;
           const saved = run.counts.unique || 0;
           const fits = run.counts.fit || 0;

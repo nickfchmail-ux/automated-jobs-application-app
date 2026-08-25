@@ -173,6 +173,10 @@ const runSlice = createSlice({
     runEvaluating(state) {
       state.phase = "evaluating";
       state.evaluationStatus = "evaluating";
+      // Clear any previous batch progress so a NEW match doesn't briefly show
+      // the previous key's fit/not-fit (or the previous run's status) before
+      // the new evaluation's batches arrive over the socket/status.
+      state.evaluationRuns = [];
     },
     /** Per-keyword batch progress (evaluation_runs rows). */
     evaluationRunsUpdated(state, action: PayloadAction<EvaluationRunRow[]>) {

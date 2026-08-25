@@ -117,6 +117,8 @@ export interface RunSummary {
   keyword: string;
   boards: string[];
   createdAt: string;
+  /** pipeline_runs.status — queued|scraping|processing|completed|failed|retrying|null. */
+  status: PipelineRunStatus | null;
   counts: FunnelCounts;
 }
 
@@ -212,6 +214,25 @@ export interface SocketStatsEvent {
   evaluation: SocketEvaluationState;
 }
 
+/**
+ * Socket `job:state` event — the live state of ONE job, pushed by the
+ * backend when a tailored resume or cover letter completes/fails.
+ *
+ * The job detail page listens to this (scoped to the user's room) so it can
+ * show fit / resume / cover-letter state live. Supabase Realtime remains the
+ * fallback for individual row changes.
+ */
+export interface SocketJobStateEvent {
+  ok: boolean;
+  jobId: string;
+  fit: boolean | null;
+  fit_score: number | null;
+  resume_status: ResumeStatus | null;
+  resume_url: string | null;
+  cover_letter_status: CoverLetterStatus | null;
+  cover_letter: string | null;
+}
+
 // ── Run / job / resume status machines ────────────────────────────
 
 /** pipeline_runs.status — machine states (as stored in Supabase) */
@@ -304,6 +325,9 @@ export type ResumeStatus =
   | "building"
   | "completed"
   | "failed";
+
+/** jobs.cover_letter_status — machine states (independent generation). */
+export type CoverLetterStatus = "none" | "building" | "completed" | "failed";
 
 /** generated_resumes.status */
 export type GeneratedResumeStatus =
