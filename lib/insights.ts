@@ -105,6 +105,8 @@ export interface Insights {
     notInterested: number;
     matchesNotApplied: number;
     coverLetterDone: number;
+    /** Total letters including ones built on non-match jobs. */
+    totalLetters: number;
     coverLetterRate: number;
     resumeDone: number;
   };
@@ -444,7 +446,13 @@ export async function getInsights(userId: string): Promise<Insights> {
   // ── Application momentum ─────────────────────────────────────────
   const appliedCount = jobs.filter((j) => j.applied === true).length;
   const notInterestedCount = jobs.filter((j) => j.interested_in === false).length;
-  const coverLetterDone = jobs.filter(
+  // Letters on MATCHES only — keeps the pipeline funnel monotonic
+  // (matches → letters ≤ matches). Users can also build letters on non-fit
+  // jobs; that's tracked separately as totalLetters.
+  const coverLetterOnMatches = matches.filter(
+    (j) => j.cover_letter_status === "completed",
+  ).length;
+  const totalLetters = jobs.filter(
     (j) => j.cover_letter_status === "completed",
   ).length;
   const resumeDone = jobs.filter((j) => j.resume_status === "completed").length;
@@ -455,9 +463,10 @@ export async function getInsights(userId: string): Promise<Insights> {
       : 0,
     notInterested: notInterestedCount,
     matchesNotApplied: matches.length - appliedCount,
-    coverLetterDone,
+    coverLetterDone: coverLetterOnMatches,
+    totalLetters,
     coverLetterRate: matches.length
-      ? Math.round((coverLetterDone / matches.length) * 100)
+      ? Math.round((coverLetterOnMatches / matches.length) * 100)
       : 0,
     resumeDone,
   };
@@ -471,7 +480,8 @@ export async function getInsights(userId: string): Promise<Insights> {
       notFit: notFit.length,
       applied: appliedCount,
       resumeBuilt: resumeDone,
-      coverLetterBuilt: coverLetterDone,
+      // Pipeline funnel: letters ready on matches (≤ matches).
+      coverLetterBuilt: coverLetterOnMatches,
       duplicate: jobs.filter((j) => j.status === "duplicate").length,
     },
     avgFitScore,

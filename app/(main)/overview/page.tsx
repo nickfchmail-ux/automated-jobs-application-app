@@ -414,32 +414,30 @@ export default async function OverviewPage() {
         </section>
       )}
 
-      {/* ── Pipeline funnel ─────────────────────────────────── */}
+      {/* ── Pipeline funnel (informational, not clickable) ── */}
       <section className="card p-8">
         <p className="eyebrow">Pipeline</p>
         <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px overflow-hidden rounded-xl bg-[var(--line)]">
           {[
-            { label: "Scraped", value: total.scraped, href: "/review" },
-            { label: "Evaluated", value: total.evaluated, href: "/review" },
-            { label: "Matches", value: total.matches, href: "/matches" },
-            { label: "Applied", value: total.applied, href: "/matches" },
+            { label: "Scraped", value: total.scraped },
+            { label: "Evaluated", value: total.evaluated },
+            { label: "Matches", value: total.matches },
+            { label: "Applied", value: total.applied },
             {
-              label: "Letters built",
+              label: "Letters on matches",
               value: total.coverLetterBuilt,
-              href: "/matches",
             },
-            { label: "Not a fit", value: total.notFit, href: "/matches" },
+            { label: "Not a fit", value: total.notFit },
           ].map((s) => (
-            <Link
+            <div
               key={s.label}
-              href={s.href}
-              className="bg-[var(--surface)] p-5 card-hover hover:bg-[var(--paper-soft)]"
+              className="bg-[var(--surface)] p-5"
             >
               <p className="font-data text-3xl font-semibold text-[var(--ink)] tabular-nums">
                 {formatNumber(s.value)}
               </p>
               <p className="mt-1 text-xs text-[var(--ink-soft)]">{s.label}</p>
-            </Link>
+            </div>
           ))}
         </div>
       </section>
@@ -462,7 +460,11 @@ export default async function OverviewPage() {
             {
               label: "Cover letters",
               value: `${momentum.coverLetterDone}`,
-              sub: `${momentum.coverLetterRate}% of matches`,
+              sub: `${momentum.coverLetterRate}% of matches${
+                momentum.totalLetters > momentum.coverLetterDone
+                  ? ` (${momentum.totalLetters - momentum.coverLetterDone} on non-matches)`
+                  : ""
+              }`,
             },
             {
               label: "Resumes built",
