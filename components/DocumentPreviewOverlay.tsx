@@ -5,21 +5,9 @@ import {
   triggerResumeAction,
 } from "@/app/actions/documents";
 import DotLoader from "@/components/DotLoader";
-import { useJobState } from "@/components/JobStateProvider";
+import { useDocumentVersions } from "@/components/useDocumentVersions";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-/** One entry in the version nav (derived from `documentVersions`). */
-interface NavVersion {
-  id: string;
-  version: number;
-  label: string;
-  status: "building" | "completed" | "failed";
-  url: string | null;
-  refinement: string | null;
-  basedOn: number | null;
-  error: string | null;
-}
 
 /**
  * Full-screen overlay for ONE document type (resume OR cover letter — never
@@ -27,8 +15,8 @@ interface NavVersion {
  * original + each fine-tuned regeneration) so the user can flip back and
  * forth between them (v1, v2, …).
  *
- * Per-version state comes from `document_versions` (via the shared
- * JobStateProvider + Supabase Realtime), so:
+ * Per-version state comes from Supabase Realtime via the `useDocumentVersions`
+ * hook — no polling, no intervals:
  *   - a `building` version shows a spinner on its tab — the overlay knows
  *     "it's generating" and renders that instead of a broken fetch
  *   - when it flips to `completed` the new version becomes clickable + the
@@ -60,78 +48,9 @@ export default function DocumentPreviewOverlay({
   open: boolean;
   onClose: () => void;
 }) {
-  const { documentVersions } = useJobState();
-  // Versions fetched from the versions API on open — includes the LEGACY v1
-  // (un-versioned resume/letter) that has no `document_versions` row yet.
-  const [apiVersions, setApiVersions] = useState<NavVersion[]>([]);
-
-  // Fetch the versions list from the API on open (merges legacy v1 + rows).
-  // Realtime (`documentVersions`) keeps it live afterward; this seeds the
-  // legacy v1 that has no row.
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    setApiVersions([]);
-    const listUrl =
-      type === "resume"
-        ? `/api/resume/${jobId}/versions`
-        : `/api/jobs/${jobId}/cover-letter/versions`;
-    async function load() {
-      try {
-        const res = await fetch(listUrl, { cache: "no-store" });
-        if (!res.ok) throw new Error(String(res.status));
-        const d = await res.json();
-        if (!alive) return;
-        const list: NavVersion[] = Array.isArray(d?.versions)
-          ? d.versions.map((v: Record<string, unknown>) => ({
-              id: String(v.id),
-              version: Number(v.version),
-              label: String(v.label ?? `v${v.version}`),
-              status: (v.status as NavVersion["status"]) ?? "completed",
-              url: (v.url as string | null) ?? null,
-              refinement: (v.refinement as string | null) ?? null,
-              basedOn: (v.based_on as number | null) ?? null,
-              error: (v.error as string | null) ?? null,
-            }))
-          : [];
-        if (alive) setApiVersions(list);
-      } catch {
-        // Transient — keep whatever we have.
-      }
-    }
-    void load();
-    return () => {
-      alive = false;
-    };
-  }, [open, jobId, type]);
-
-  // Merge: Realtime-fed rows win for versioned entries; the API list supplies
-  // the legacy v1 (no row) and any entries Realtime hasn't delivered yet.
-  const versions = useMemo<NavVersion[]>(() => {
-    const live = (documentVersions ?? [])
-      .filter((v) => v.doc_type === type)
-      .sort((a, b) => a.version - b.version)
-      .map((v) => ({
-        id: v.id,
-        version: v.version,
-        label: `v${v.version}`,
-        status: v.status,
-        url: v.url,
-        refinement: v.refinement,
-        basedOn: v.based_on,
-        error: v.error,
-      }));
-    // Merge API versions not yet present in live (e.g. legacy v1), and
-    // overlay live status onto matching API entries.
-    const merged = [...live];
-    for (const av of apiVersions) {
-      const i = merged.findIndex(
-        (m) => m.version === av.version && m.id !== "legacy",
-      );
-      if (i === -1) merged.push(av);
-    }
-    return merged.sort((a, b) => a.version - b.version);
-  }, [documentVersions, type, apiVersions]);
+  // Live per-version state via Supabase Realtime (seeded once, no interval).
+  const { versions, loading, refresh } = useDocumentVersions(jobId, type, open);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [content, setContent] = useState<string | null>(null);
@@ -270,6 +189,33 @@ export default function DocumentPreviewOverlay({
     setRefinement("");
   }
 
+  /** Manually re-fetch the version list from the API (also refreshes the
+   *  active version's content). */
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await refresh();
+      // Re-fetch the active version's content so the viewer shows the latest.
+      setContent(null);
+      setError(null);
+      if (active && active.status === "completed") {
+        const url =
+          active.url ??
+          (type === "resume"
+            ? `/api/resume/${jobId}/versions/${active.version}`
+            : `/api/jobs/${jobId}/cover-letter/versions/${active.version}`);
+        fetch(url, { cache: "no-store" })
+          .then((res) =>
+            res.ok ? res.text() : Promise.reject(new Error(String(res.status))),
+          )
+          .then(setContent)
+          .catch(() => setError("Couldn't load this version."));
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function copyActive() {
     if (!content) return;
     const text = type === "resume" ? stripToText(content) : content;
@@ -400,7 +346,7 @@ export default function DocumentPreviewOverlay({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
-        className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+        className="relative w-full max-w-4xl h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top navigation bar — switch between VERSIONS of this document */}
@@ -447,6 +393,33 @@ export default function DocumentPreviewOverlay({
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* Manual refresh — re-fetches the version list + active content */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              aria-label="Refresh versions"
+              title="Refresh versions"
+            >
+              {refreshing ? (
+                <DotLoader dotClassName="bg-zinc-500" className="scale-75" />
+              ) : (
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              )}
+              Refresh
+            </button>
             <button
               onClick={copyActive}
               disabled={!content || isActiveBuilding}
@@ -521,8 +494,11 @@ export default function DocumentPreviewOverlay({
           </div>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-auto bg-white dark:bg-zinc-900">
+        {/* Body — the SINGLE scroll container. `min-h-0` is required on a
+            flex child so it can shrink below its content and own the scroll
+            without pushing the fixed header/bottom bars out (that was the
+            double-scrollbar bug: the fixed 80vh iframe inside overflow-auto). */}
+        <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900">
           {isActiveBuilding ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-center px-6">
               <DotLoader dotClassName="bg-indigo-500" />
@@ -545,9 +521,11 @@ export default function DocumentPreviewOverlay({
             </div>
           ) : type === "resume" ? (
             content ? (
+              /* The iframe fills the body (h-full). Its own document scrolls
+                 internally — exactly ONE scrollbar (the iframe's). */
               <iframe
                 title="Tailored resume preview"
-                className="w-full h-[80vh] border-0"
+                className="w-full h-full min-h-0 border-0 block"
                 sandbox="allow-same-origin"
                 srcDoc={content}
               />
