@@ -100,12 +100,8 @@ export default function DocumentPreviewOverlay({
       }
     }
     void load();
-    // Refresh periodically so a fine-tune that completes while the overlay
-    // is open still appears even if the Realtime event is missed.
-    const interval = setInterval(load, 4000);
     return () => {
       alive = false;
-      clearInterval(interval);
     };
   }, [open, jobId, type]);
 
