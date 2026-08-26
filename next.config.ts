@@ -18,7 +18,11 @@ const nextConfig: NextConfig = {
       },
       // The old /saved page was removed — not-interested links now go to
       // matches (the not-fit view).
-      { source: "/not-interested", destination: "/matches?view=notfit", permanent: true },
+      {
+        source: "/not-interested",
+        destination: "/matches?view=notfit",
+        permanent: true,
+      },
       // The old "/" dashboard (search launcher) is now /search; "/" is the
       // insight Overview. Keep old root → /search for anyone relying on it.
       // (We keep "/" itself pointing at /overview via the page below.)

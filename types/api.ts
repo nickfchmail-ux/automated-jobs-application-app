@@ -335,3 +335,24 @@ export type GeneratedResumeStatus =
   | "building"
   | "completed"
   | "failed";
+
+// ── Document versions (fine-tune) ───────────────────────────────
+
+/** A document_versions row — per-version state for a resume / cover letter. */
+export interface DocumentVersion {
+  id: string;
+  /** `resume` | `cover-letter` */
+  doc_type: "resume" | "cover-letter";
+  version: number;
+  status: "building" | "completed" | "failed";
+  url: string | null;
+  file_name: string | null;
+  error: string | null;
+  /** The refinement note that produced this version (null = original). */
+  refinement: string | null;
+  /** The version this one was built FROM (null = original/first). */
+  based_on: number | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}

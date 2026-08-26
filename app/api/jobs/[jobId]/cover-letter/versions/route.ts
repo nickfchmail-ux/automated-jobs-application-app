@@ -1,15 +1,16 @@
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
+import type { DocumentVersion } from "@/types/api";
 
 /**
  * GET /api/jobs/[jobId]/cover-letter/versions
  *
  * Lists all generated cover-letter VERSIONS for a job (original + each
- * fine-tuned regeneration), scoped to the authenticated user. Each version is
- * a file in the `cover-letters` bucket named `<userId>-<jobId>-v<N>.txt`.
- * Falls back to the latest inline `jobs.cover_letter` (v1) if no versioned
- * files exist yet (legacy generations).
+ * fine-tuned regeneration), scoped to the authenticated user. Reads the
+ * authoritative `document_versions` table (each row carries status,
+ * refinement and a file URL). Falls back to the latest inline
+ * `jobs.cover_letter` (v1) if no versioned rows exist yet (legacy).
  */
 export async function GET(
   _req: NextRequest,
@@ -24,28 +25,35 @@ export async function GET(
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }
 
-  const prefix = `${userId}-${jobId}-v`;
-  const { data: files, error } = await supabase.storage
-    .from("cover-letters")
-    .list("", { search: `${userId}-${jobId}` });
+  const { data: rows, error } = await supabase
+    .from("document_versions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("job_id", jobId)
+    .eq("doc_type", "cover-letter")
+    .order("version", { ascending: true });
 
-  if (error && (error as { message?: string }).message !== "Bucket not found") {
+  if (error && !isMissingTable(error)) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let versions = (files ?? [])
-    .filter((f) => f.name.startsWith(prefix) && f.name.endsWith(".txt"))
-    .map((f) => {
-      const m = f.name.match(/-v(\d+)\.txt$/i);
-      const n = m ? parseInt(m[1], 10) : 0;
-      const { data } = supabase.storage
-        .from("cover-letters")
-        .getPublicUrl(f.name);
-      return { url: data.publicUrl, label: `v${n}`, version: n };
-    })
-    .sort((a, b) => a.version - b.version);
+  let versions = (rows as DocumentVersion[] | null)?.length
+    ? ((rows as DocumentVersion[])
+        .filter((r) => r.version >= 1)
+        .map((r) => ({
+          id: r.id,
+          version: r.version,
+          label: `v${r.version}`,
+          url:
+            r.url ?? `/api/jobs/${jobId}/cover-letter/versions/${r.version}`,
+          status: r.status,
+          refinement: r.refinement,
+          basedOn: r.based_on,
+          error: r.error,
+        })) ?? [])
+    : [];
 
-  // No versioned files yet — fall back to the latest inline letter (legacy).
+  // No versioned rows yet — fall back to the latest inline letter (legacy).
   if (versions.length === 0) {
     const { data: job, error: jErr } = await supabase
       .from("jobs")
@@ -56,9 +64,14 @@ export async function GET(
     if (!jErr && job?.cover_letter) {
       versions = [
         {
-          url: `/api/jobs/${jobId}/cover-letter/content`,
-          label: "v1",
+          id: "legacy",
           version: 1,
+          label: "v1",
+          url: `/api/jobs/${jobId}/cover-letter/content`,
+          status: "completed",
+          refinement: null,
+          basedOn: null,
+          error: null,
         },
       ];
     }
@@ -72,4 +85,13 @@ export async function GET(
   }
 
   return NextResponse.json({ versions });
+}
+
+function isMissingTable(error: { message?: string; code?: string }): boolean {
+  const msg = error?.message ?? "";
+  return (
+    error?.code === "42P01" ||
+    /relation "public\.document_versions" does not exist/i.test(msg) ||
+    /does not exist/i.test(msg)
+  );
 }

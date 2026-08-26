@@ -4,8 +4,8 @@ import {
   getJobDocumentStateAction,
   triggerResumeAction,
 } from "@/app/actions/documents";
-import DotLoader from "@/components/DotLoader";
 import DocumentPreviewOverlay from "@/components/DocumentPreviewOverlay";
+import DotLoader from "@/components/DotLoader";
 import { useJobState } from "@/components/JobStateProvider";
 import { resumeStatusCopy } from "@/lib/funnel";
 import { useEffect, useState } from "react";
@@ -31,6 +31,10 @@ const TONE_TEXT: Record<string, string> = {
  *
  * A page refresh mid-generation re-hydrates `building` from Supabase, so the
  * generation continues server-side and is never cut off.
+ *
+ * The "Fine-tune" action opens the UNIFIED overlay (DocumentPreviewOverlay),
+ * which hosts the version nav + the per-version fine-tune panel — so the
+ * small fine-tune modal previously defined here was removed.
  */
 export default function ResumeGenerationCard({
   jobId,
@@ -49,77 +53,25 @@ export default function ResumeGenerationCard({
   // builds, we show "Generating…" immediately instead of waiting for the
   // Realtime/socket event to round-trip (which can take 30-60s for a resume).
   const [optimisticBuilding, setOptimisticBuilding] = useState(false);
+  // Unified preview overlay (Resume | Cover Letter tabs + version nav +
+  // per-version fine-tune panel).
   const [previewOpen, setPreviewOpen] = useState(false);
-  // Fine-tune overlay: user enters a refinement note, we regenerate the resume
-  // with that instruction appended to the prompt.
-  const [fineTuneOpen, setFineTuneOpen] = useState(false);
-  const [refinement, setRefinement] = useState("");
-  // True while a fine-tune regeneration is in flight — shows a "Regenerating…"
-  // state in the overlay so the user knows it's processing.
-  const [regenerating, setRegenerating] = useState(false);
 
-  async function handleGenerateWithRefinement() {
-    const note = refinement.trim();
-    if (!note) {
-      setActionError("Tell us what to change before regenerating.");
-      return;
-    }
-    setActionError(null);
-    setRegenerating(true);
-    setRequesting(true);
-    const res = await triggerResumeAction(jobId, note);
-    setRequesting(false);
-    if (!res.ok) {
-      setRegenerating(false);
-      setActionError(
-        /resume/i.test(res.error)
-          ? "Upload a resume first, then try again."
-          : "Couldn't regenerate your resume. Please try again in a moment.",
-      );
-      return;
-    }
-    // Success → show "Regenerating…" in the overlay + the card's building
-    // state. Realtime/socket confirm `building` → `completed` (see the effect
-    // below that clears `regenerating` at a terminal state). No auto-open —
-    // the user can open the preview from the card or the top nav bar.
-    setOptimisticBuilding(true);
-    setRefinement("");
-  }
-
-  // Clear the "Regenerating…" overlay state once the server reaches a
-  // TERMINAL state (completed or failed). Without this, the fine-tune overlay
-  // would sit on "Regenerating…" forever — the stale loop the user hit.
+  // Guaranteed fallback while a resume is building: poll the document state
+  // so the "Generating…" state ALWAYS clears to the real terminal state,
+  // even if the socket/Realtime event is missed.
   useEffect(() => {
-    if (resumeStatus === "completed" || resumeStatus === "failed") {
-      setRegenerating(false);
-      setOptimisticBuilding(false);
-      setFineTuneOpen(false);
-      if (resumeStatus === "failed") {
-        setActionError("The refinement didn't finish. You can try again.");
-      }
-    }
-  }, [resumeStatus]);
-
-  // Guaranteed fallback while a fine-tune regeneration is in flight: poll the
-  // document state so the "Regenerating…" overlay ALWAYS clears to the real
-  // terminal state, even if the socket/Realtime event is missed. This is the
-  // touchpoint that breaks any stale loop the user could hit.
-  useEffect(() => {
-    if (!regenerating || !jobId) return;
+    if (resumeStatus !== "building" && !optimisticBuilding) return;
     let alive = true;
     async function check() {
       if (!alive) return;
       const res = await getJobDocumentStateAction(jobId);
       if (!alive || !res.ok) return;
       if (res.state.resume_status === "completed") {
-        setRegenerating(false);
         setOptimisticBuilding(false);
-        setFineTuneOpen(false);
       } else if (res.state.resume_status === "failed") {
-        setRegenerating(false);
         setOptimisticBuilding(false);
-        setFineTuneOpen(false);
-        setActionError("The refinement didn't finish. You can try again.");
+        setActionError("The generation didn't finish. You can try again.");
       }
     }
     void check();
@@ -128,7 +80,7 @@ export default function ResumeGenerationCard({
       alive = false;
       clearInterval(interval);
     };
-  }, [regenerating, jobId]);
+  }, [resumeStatus, optimisticBuilding, jobId]);
 
   // A terminal server state (completed/failed) supersedes the optimistic flag;
   // otherwise a `building` state from Realtime also supersedes it.
@@ -214,7 +166,7 @@ export default function ResumeGenerationCard({
           </button>
           <button
             type="button"
-            onClick={() => setFineTuneOpen(true)}
+            onClick={() => setPreviewOpen(true)}
             className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
           >
             <svg
@@ -267,91 +219,8 @@ export default function ResumeGenerationCard({
         <p className="mt-3 text-xs text-red-600 dark:text-red-400">{error}</p>
       )}
 
-      {/* Fine-tune overlay — user tells us what to change, we regenerate the
-          resume with that note (plus the base resume + full job content). */}
-      {fineTuneOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setFineTuneOpen(false)}
-        >
-          <div
-            className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {regenerating ? (
-              /* Processing state — clear feedback that regeneration is running */
-              <div className="py-8 flex flex-col items-center gap-3 text-center">
-                <DotLoader dotClassName="bg-indigo-500" />
-                <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-                  Regenerating your resume…
-                </p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Applying your changes with your base resume and the full job
-                  posting. This usually takes under a minute.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                    Fine-tune your resume
-                  </h3>
-                  <button
-                    onClick={() => setFineTuneOpen(false)}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-                    aria-label="Close"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-                  Tell us what to adjust — e.g. &ldquo;make it more
-                  concise&rdquo;, &ldquo;emphasize my data-entry
-                  experience&rdquo;, or &ldquo;fix the wording of the
-                  summary&rdquo;. We&apos;ll regenerate using your note, your
-                  base resume, and the full job posting.
-                </p>
-                <textarea
-                  value={refinement}
-                  onChange={(e) => setRefinement(e.target.value)}
-                  rows={5}
-                  placeholder="e.g. Emphasize my document processing and Excel skills; keep it to one page."
-                  className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none"
-                />
-                <div className="flex items-center justify-end gap-2 mt-4">
-                  <button
-                    onClick={() => setFineTuneOpen(false)}
-                    className="text-sm font-medium px-4 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleGenerateWithRefinement}
-                    disabled={requesting}
-                    className="text-sm font-semibold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
-                  >
-                    {requesting ? "Starting…" : "Regenerate resume"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Unified preview overlay with a top nav bar (Resume | Cover Letter).
+      {/* Unified preview overlay with a top nav bar (Resume | Cover Letter),
+          version tabs with live status, and the in-overlay fine-tune panel.
           Conditionally mounted so it starts fresh each time it opens. */}
       {previewOpen && (
         <DocumentPreviewOverlay

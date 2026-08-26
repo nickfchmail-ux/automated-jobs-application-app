@@ -142,6 +142,40 @@ export interface DocumentRequestMessage {
    * "emphasize my data-entry experience", "fix the wording of bullet 3".
    */
   refinement?: string;
+  /**
+   * Which version this generation should become. The worker computes the
+   * next version (max existing + 1) when absent; the HTTP trigger passes it
+   * through so the frontend can optimistically render the building tab.
+   */
+  version?: number;
+  /**
+   * Which version this generation is built FROM (the version the user
+   * refined). The worker uses it to fetch the source document so a
+   * refinement pass edits the latest version instead of the original.
+   */
+  basedOn?: number;
+}
+
+/**
+ * A row in the `document_versions` table — per-version state for the
+ * fine-tune feature. The overlay reads this to render the version nav with
+ * live status (building → completed/failed) over Supabase Realtime.
+ */
+export interface DocumentVersionRow {
+  id: string;
+  user_id: string;
+  job_id: string;
+  doc_type: "resume" | "cover-letter";
+  version: number;
+  status: "building" | "completed" | "failed";
+  url: string | null;
+  file_name: string | null;
+  error: string | null;
+  refinement: string | null;
+  based_on: number | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 /**

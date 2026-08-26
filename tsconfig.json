@@ -30,8 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": [
-    "node_modules",
-    "azure/**/*"
-  ]
+  "exclude": ["node_modules"]
 }

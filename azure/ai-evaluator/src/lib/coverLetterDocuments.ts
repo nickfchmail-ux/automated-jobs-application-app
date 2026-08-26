@@ -40,31 +40,35 @@ export async function storeCoverLetterVersion(params: {
   userId: string;
   jobId: string;
   letter: string;
+  /** Optional explicit version; defaults to max existing + 1. */
+  version?: number;
 }): Promise<{ url: string | null; fileName: string }> {
-  const { userId, jobId, letter } = params;
+  const { userId, jobId, letter, version: requestedVersion } = params;
   const sb = getSupabase();
   const baseName = `${userId}-${jobId}`;
 
   return withRetry(async () => {
     // Next version number by listing existing files for this job.
-    let version = 1;
-    try {
-      const { data: files, error: listErr } = await sb.storage
-        .from(COVER_LETTER_BUCKET)
-        .list("", { search: baseName });
-      if (!listErr && files) {
-        const existing = files
-          .map((f) => f.name)
-          .filter((n) => n.startsWith(`${baseName}-v`))
-          .map((n) => {
-            const m = n.match(/-v(\d+)\.txt$/i);
-            return m ? parseInt(m[1], 10) : 0;
-          })
-          .filter((n) => !Number.isNaN(n));
-        if (existing.length) version = Math.max(...existing) + 1;
+    let version = requestedVersion ?? 1;
+    if (!requestedVersion) {
+      try {
+        const { data: files, error: listErr } = await sb.storage
+          .from(COVER_LETTER_BUCKET)
+          .list("", { search: baseName });
+        if (!listErr && files) {
+          const existing = files
+            .map((f) => f.name)
+            .filter((n) => n.startsWith(`${baseName}-v`))
+            .map((n) => {
+              const m = n.match(/-v(\d+)\.txt$/i);
+              return m ? parseInt(m[1], 10) : 0;
+            })
+            .filter((n) => !Number.isNaN(n));
+          if (existing.length) version = Math.max(...existing) + 1;
+        }
+      } catch {
+        /* fall through — start at v1 */
       }
-    } catch {
-      /* fall through — start at v1 */
     }
 
     const fileName = `${baseName}-v${version}.txt`;

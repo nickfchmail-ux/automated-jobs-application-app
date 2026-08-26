@@ -4,6 +4,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
+import { markDocumentVersionBuilding, nextDocumentVersion } from "../lib/documentVersions.js";
 import { enqueueDocumentRequest } from "../lib/serviceBus.js";
 import { getSupabase } from "../lib/supabase.js";
 import type {
@@ -19,14 +20,19 @@ import type {
  * authenticated user's `user_id` (never trusted from the client alone — the
  * job must belong to that user).
  *
- * Body: { jobId, userId, type: "resume" | "cover-letter" }
+ * Body: { jobId, userId, type: "resume" | "cover-letter", refinement?,
+ *         version?, basedOn? }
  *
  * Behavior:
  *   - Verifies the job exists AND belongs to `userId`.
  *   - Idempotent guard: if the artifact is already `completed`, returns it
- *     (does NOT re-enqueue).
+ *     (does NOT re-enqueue) — UNLESS `refinement` is present (a fine-tune
+ *     always regenerates).
  *   - Sets the status to `building` BEFORE enqueuing so a page refresh shows
  *     "Generating…" and the Service Bus message is already durable.
+ *   - Computes (or accepts) the VERSION for this generation and marks the
+ *     `document_versions` row building, so the overlay shows "Regenerating…"
+ *     on the right tab over Realtime.
  *   - Enqueues ONE message to the artifact's OWN queue and returns 202.
  */
 export const generateDocument: HttpHandler = async (
@@ -41,6 +47,10 @@ export const generateDocument: HttpHandler = async (
     type?: string;
     /** Optional user refinement note (fine-tune the generated artifact). */
     refinement?: string;
+    /** Optional explicit version this generation becomes. */
+    version?: number;
+    /** Optional version this generation is built FROM. */
+    basedOn?: number;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -54,6 +64,16 @@ export const generateDocument: HttpHandler = async (
   const refinement =
     typeof body?.refinement === "string" && body.refinement.trim()
       ? body.refinement.trim().slice(0, 2000)
+      : undefined;
+  const version =
+    typeof body?.version === "number" && Number.isInteger(body.version) &&
+    body.version >= 1
+      ? body.version
+      : undefined;
+  const basedOn =
+    typeof body?.basedOn === "number" && Number.isInteger(body.basedOn) &&
+    body.basedOn >= 1
+      ? body.basedOn
       : undefined;
 
   if (!jobId || !userId) {
@@ -91,6 +111,11 @@ export const generateDocument: HttpHandler = async (
     // existing artifact), so skip the idempotent "already ready" / "building"
     // short-circuits in that case.
     const isRefinement = !!refinement;
+
+    // Resolve the version for THIS generation. A fine-tune creates the next
+    // version unless the caller pinned one; a first-time build is v1.
+    const nextVersion =
+      version ?? (await nextDocumentVersion(userId, jobId, type));
 
     if (type === "resume") {
       // Already done → don't re-enqueue (unless refining); just report state.
@@ -162,11 +187,26 @@ export const generateDocument: HttpHandler = async (
         .eq("user_id", userId);
     }
 
+    // Mark the per-version row building so the overlay shows the spinner on
+    // the correct tab over Realtime (durable across refresh).
+    await markDocumentVersionBuilding({
+      userId,
+      jobId,
+      type,
+      version: nextVersion,
+      refinement,
+      basedOn,
+    }).catch((e) => {
+      context.warn(`markDocumentVersionBuilding failed (non-fatal): ${e}`);
+    });
+
     const message: DocumentRequestMessage = {
       type,
       jobId,
       userId,
       runId: job.pipeline_run_id,
+      version: nextVersion,
+      basedOn,
       ...(refinement ? { refinement } : {}),
     };
     await enqueueDocumentRequest(message);

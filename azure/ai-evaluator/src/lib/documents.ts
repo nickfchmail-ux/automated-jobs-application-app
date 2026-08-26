@@ -24,6 +24,14 @@ import type {
 } from "../shared/types.js";
 import { generateCoverLetterWithLLM, generateResumeWithLLM } from "./ai.js";
 import { storeCoverLetterVersion } from "./coverLetterDocuments.js";
+import {
+  fetchDocumentVersionContent,
+  fetchLatestDocumentVersionContent,
+  markDocumentVersionBuilding,
+  markDocumentVersionCompleted,
+  markDocumentVersionFailed,
+  nextDocumentVersion,
+} from "./documentVersions.js";
 import { buildCoverLetterPrompt, buildResumePrompt } from "./prompts.js";
 import { fetchResumeText, sanitizeResume } from "./resume.js";
 import { storeGeneratedResume } from "./resumeDocuments.js";
@@ -51,23 +59,19 @@ async function loadOwnedJob(
 /**
  * Fetch the previously generated resume HTML (if any) so a refinement pass can
  * build on it rather than regenerate from scratch. Returns null when none.
+ *
+ * Reads the LATEST completed version (v2, v3, …) — not the unversioned
+ * original — so a v2→v3 fine-tune edits v2, not the first generation.
  */
 async function fetchExistingResumeHtml(
   userId: string,
   jobId: string,
 ): Promise<string | null> {
-  const GENERATED_BUCKET = "generated-resumes";
-  const fileName = `${userId}-${jobId}.html`;
-  try {
-    const sb = getSupabase();
-    const { data: blob, error } = await sb.storage
-      .from(GENERATED_BUCKET)
-      .download(fileName);
-    if (error || !blob) return null;
-    return Buffer.from(await blob.arrayBuffer()).toString("utf8");
-  } catch {
-    return null;
-  }
+  return fetchLatestDocumentVersionContent({
+    userId,
+    jobId,
+    type: "resume",
+  });
 }
 
 /** The previously generated cover letter for the job (scoped to the owner). */
@@ -76,6 +80,14 @@ async function getExistingCoverLetter(
   jobId: string,
 ): Promise<string | null> {
   try {
+    // Prefer the LATEST completed version file (matches what a refinement
+    // pass should edit); fall back to the inline `jobs.cover_letter`.
+    const latest = await fetchLatestDocumentVersionContent({
+      userId,
+      jobId,
+      type: "cover-letter",
+    });
+    if (latest) return latest;
     const sb = getSupabase();
     const { data, error } = await sb
       .from("jobs")
@@ -95,11 +107,14 @@ async function getExistingCoverLetter(
  *
  *  1. Fetch + sanitize the user's resume (contact included — a tailored
  *     resume carries the candidate's contact details).
- *  2. ONE LLM call → tailored resume HTML.
- *  3. Store to the `generated-resumes` bucket + `generated_resumes` row.
- *  4. Write `jobs.resume_status = completed` + `resume_url` (Realtime
+ *  2. Compute the version (message-provided, else next).
+ *  3. Fetch the LATEST completed version (if any) so a REFINEMENT pass edits
+ *     the most recent resume, not the original.
+ *  4. ONE LLM call → tailored resume HTML.
+ *  5. Store to the `generated-resumes` bucket + `document_versions` row.
+ *  6. Write `jobs.resume_status = completed` + `resume_url` (Realtime
  *     surfaces this to the job detail page).
- *  5. Push a socket state update (best-effort).
+ *  7. Push a socket state update (best-effort).
  */
 export async function generateTailoredResume(
   msg: DocumentRequestMessage,
@@ -107,47 +122,95 @@ export async function generateTailoredResume(
 ): Promise<void> {
   const { jobId, userId, runId, refinement } = msg;
   const job = await loadOwnedJob(jobId, userId);
+  let version = msg.version;
+  let basedOn = msg.basedOn;
 
-  const rawResume = await fetchResumeText(userId);
-  const resumeText = sanitizeResume(rawResume, { includeContact: true });
+  // Resolve + persist the building state BEFORE the (slow) LLM call so a
+  // page refresh mid-generation shows "Regenerating…" on the correct tab.
+  // Best-effort: if the `document_versions` table isn't migrated yet, we
+  // still generate (the artifact just won't be version-tracked).
+  try {
+    version = version ?? (await nextDocumentVersion(userId, jobId, "resume"));
+    await markDocumentVersionBuilding({
+      userId,
+      jobId,
+      type: "resume",
+      version,
+      refinement,
+      basedOn,
+    });
+  } catch (e) {
+    log(`document_versions state write skipped (non-fatal): ${e}`);
+    version = version ?? 1;
+  }
 
-  // Fetch the previously generated resume (if any) so a REFINEMENT pass can
-  // build on it instead of starting from scratch.
-  const existingHtml = await fetchExistingResumeHtml(userId, jobId);
+  try {
+    const rawResume = await fetchResumeText(userId);
+    const resumeText = sanitizeResume(rawResume, { includeContact: true });
 
-  // LLM generation with the FULL job + resume context so nothing is lost.
-  // The LLM reads the candidate's complete resume + the entire job posting
-  // and produces a tailored, complete resume HTML. `enhanceResumeForPrint`
-  // strips hyperlinks to visible text (URLs must print in PDF) + adds print
-  // CSS. Uses the fast deepseek-chat model.
-  const { resumeHtml } = await generateResumeWithLLM(
-    buildResumePrompt(resumeText, job, refinement, existingHtml),
-  );
-  const printReadyHtml = enhanceResumeForPrint(resumeHtml);
-  const { resumeUrl } = await storeGeneratedResume({
-    userId,
-    jobId,
-    html: printReadyHtml,
-  });
+    // Fetch the latest previously generated resume (if any) so a REFINEMENT
+    // pass can build on it instead of starting from scratch.
+    const existingHtml = await fetchExistingResumeHtml(userId, jobId);
 
-  const sb = getSupabase();
-  const { error: updErr } = await sb
-    .from("jobs")
-    .update({
-      resume_status: "completed",
-      resume_url: resumeUrl,
-      resume_error: null,
-      resume_completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", jobId)
-    .eq("user_id", userId);
-  if (updErr) throw new Error(updErr.message);
+    // LLM generation with the FULL job + resume context so nothing is lost.
+    // The LLM reads the candidate's complete resume + the entire job posting
+    // and produces a tailored, complete resume HTML. `enhanceResumeForPrint`
+    // strips hyperlinks to visible text (URLs must print in PDF) + adds print
+    // CSS. Uses the fast deepseek-chat model.
+    const { resumeHtml } = await generateResumeWithLLM(
+      buildResumePrompt(resumeText, job, refinement, existingHtml),
+    );
+    const printReadyHtml = enhanceResumeForPrint(resumeHtml);
+    const { resumeUrl, fileName } = await storeGeneratedResume({
+      userId,
+      jobId,
+      html: printReadyHtml,
+      version,
+    });
 
-  if (runId) await notifyStateChange(userId, runId).catch(() => undefined);
-  // Push the per-job state so the job detail page updates instantly.
-  await notifyJobStateChange(userId, jobId).catch(() => undefined);
-  log(`resume done: job=${jobId} url=${resumeUrl}`);
+    // Record this version as completed (Realtime surfaces it to the overlay).
+    // Best-effort — the `jobs` mirror below is the source of truth for the
+    // card; a version-state write failure must not fail the whole generation.
+    await markDocumentVersionCompleted({
+      userId,
+      jobId,
+      type: "resume",
+      version,
+      url: resumeUrl,
+      fileName,
+    }).catch((e) => {
+      log(`resume version state failed (non-fatal): ${e}`);
+    });
+
+    const sb = getSupabase();
+    const { error: updErr } = await sb
+      .from("jobs")
+      .update({
+        resume_status: "completed",
+        resume_url: resumeUrl,
+        resume_error: null,
+        resume_completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId)
+      .eq("user_id", userId);
+    if (updErr) throw new Error(updErr.message);
+
+    if (runId) await notifyStateChange(userId, runId).catch(() => undefined);
+    // Push the per-job state so the job detail page updates instantly.
+    await notifyJobStateChange(userId, jobId).catch(() => undefined);
+    log(`resume done: job=${jobId} v${version} url=${resumeUrl}`);
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : "Resume generation failed";
+    await markDocumentVersionFailed({
+      userId,
+      jobId,
+      type: "resume",
+      version,
+      error: errMsg,
+    }).catch(() => undefined);
+    throw e;
+  }
 }
 
 /**
@@ -156,10 +219,15 @@ export async function generateTailoredResume(
  *  1. Fetch + sanitize the user's resume (contact included — a cover letter
  *     is addressed to the role/company and signed with the candidate's
  *     details).
- *  2. ONE LLM call → cover letter text.
- *  3. Write `jobs.cover_letter` + `jobs.cover_letter_status = completed`
+ *  2. Compute the version (message-provided, else next).
+ *  3. Fetch the LATEST completed version (if any) so a REFINEMENT pass edits
+ *     the most recent letter, not the original.
+ *  4. ONE LLM call → cover letter text.
+ *  5. Store this generation as its own VERSION (v1, v2, …) + record the
+ *     `document_versions` row (Realtime surfaces it to the overlay).
+ *  6. Write `jobs.cover_letter` + `jobs.cover_letter_status = completed`
  *     (Realtime surfaces this to the job detail page).
- *  4. Push a socket state update (best-effort).
+ *  7. Push a socket state update (best-effort).
  */
 export async function generateCoverLetterForJob(
   msg: DocumentRequestMessage,
@@ -167,47 +235,90 @@ export async function generateCoverLetterForJob(
 ): Promise<void> {
   const { jobId, userId, runId, refinement } = msg;
   const job = await loadOwnedJob(jobId, userId);
+  let version = msg.version;
+  const basedOn = msg.basedOn;
 
-  const rawResume = await fetchResumeText(userId);
-  const resumeText = sanitizeResume(rawResume, { includeContact: true });
-
-  // The previously generated cover letter (if any) so a REFINEMENT pass can
-  // edit it based on the user's note instead of starting fresh.
-  const existing = await getExistingCoverLetter(userId, jobId);
-
-  const coverLetter = await generateCoverLetterWithLLM(
-    buildCoverLetterPrompt(resumeText, job, refinement, existing),
-  );
-  if (!coverLetter.trim()) {
-    throw new Error("LLM returned an empty cover letter");
+  // Persist the building state BEFORE the (slow) LLM call. Best-effort: if
+  // the `document_versions` table isn't migrated yet, generation proceeds
+  // (the artifact just won't be version-tracked).
+  try {
+    version =
+      version ?? (await nextDocumentVersion(userId, jobId, "cover-letter"));
+    await markDocumentVersionBuilding({
+      userId,
+      jobId,
+      type: "cover-letter",
+      version,
+      refinement,
+      basedOn,
+    });
+  } catch (e) {
+    log(`document_versions state write skipped (non-fatal): ${e}`);
+    version = version ?? 1;
   }
 
-  // Store this generation as its own VERSION (v1, v2, …) so the overlay's
-  // version nav can flip between the original and fine-tuned letters.
-  await storeCoverLetterVersion({
-    userId,
-    jobId,
-    letter: coverLetter,
-  }).catch((e) => {
-    log(`cover letter version store failed (non-fatal): ${e}`);
-  });
+  try {
+    const rawResume = await fetchResumeText(userId);
+    const resumeText = sanitizeResume(rawResume, { includeContact: true });
 
-  const sb = getSupabase();
-  const { error: updErr } = await sb
-    .from("jobs")
-    .update({
-      cover_letter: coverLetter,
-      cover_letter_status: "completed",
-      cover_letter_error: null,
-      cover_letter_completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", jobId)
-    .eq("user_id", userId);
-  if (updErr) throw new Error(updErr.message);
+    // The previously generated cover letter (if any) so a REFINEMENT pass can
+    // edit it based on the user's note instead of starting fresh.
+    const existing = await getExistingCoverLetter(userId, jobId);
 
-  if (runId) await notifyStateChange(userId, runId).catch(() => undefined);
-  // Push the per-job state so the job detail page updates instantly.
-  await notifyJobStateChange(userId, jobId).catch(() => undefined);
-  log(`cover letter done: job=${jobId}`);
+    const coverLetter = await generateCoverLetterWithLLM(
+      buildCoverLetterPrompt(resumeText, job, refinement, existing),
+    );
+    if (!coverLetter.trim()) {
+      throw new Error("LLM returned an empty cover letter");
+    }
+
+    // Store this generation as its own VERSION (v1, v2, …) so the overlay's
+    // version nav can flip between the original and fine-tuned letters.
+    const stored = await storeCoverLetterVersion({
+      userId,
+      jobId,
+      letter: coverLetter,
+      version,
+    });
+    await markDocumentVersionCompleted({
+      userId,
+      jobId,
+      type: "cover-letter",
+      version,
+      url: stored.url,
+      fileName: stored.fileName,
+    }).catch((e) => {
+      log(`cover letter version state failed (non-fatal): ${e}`);
+    });
+
+    const sb = getSupabase();
+    const { error: updErr } = await sb
+      .from("jobs")
+      .update({
+        cover_letter: coverLetter,
+        cover_letter_status: "completed",
+        cover_letter_error: null,
+        cover_letter_completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", jobId)
+      .eq("user_id", userId);
+    if (updErr) throw new Error(updErr.message);
+
+    if (runId) await notifyStateChange(userId, runId).catch(() => undefined);
+    // Push the per-job state so the job detail page updates instantly.
+    await notifyJobStateChange(userId, jobId).catch(() => undefined);
+    log(`cover letter done: job=${jobId} v${version}`);
+  } catch (e) {
+    const errMsg =
+      e instanceof Error ? e.message : "Cover letter generation failed";
+    await markDocumentVersionFailed({
+      userId,
+      jobId,
+      type: "cover-letter",
+      version,
+      error: errMsg,
+    }).catch(() => undefined);
+    throw e;
+  }
 }

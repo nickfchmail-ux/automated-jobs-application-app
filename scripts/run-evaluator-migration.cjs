@@ -3,8 +3,15 @@ const fs = require("fs");
 const path = require("path");
 const { Client } = require("pg");
 
-const MIGRATION =
-  "d:/Workstation/automated-jobs/next-react/azure/ai-evaluator/migrations/002_add_evaluation_output_and_job_documents.sql";
+// Usage: node scripts/run-evaluator-migration.cjs [migrationFile]
+// Defaults to the latest migration (document_versions).
+const DEFAULT_MIGRATION = "006_document_versions.sql";
+const requested = process.argv[2] || DEFAULT_MIGRATION;
+
+const MIGRATION = path.resolve(
+  "d:/Workstation/automated-jobs/next-react/azure/ai-evaluator/migrations",
+  requested,
+);
 
 const CONN = {
   host: "aws-1-ap-southeast-2.pooler.supabase.com",

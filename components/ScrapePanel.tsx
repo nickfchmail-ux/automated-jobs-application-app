@@ -124,14 +124,10 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         boards: lastSearch.boards,
       });
       if (!result.ok) {
-        setError(
-          "We couldn't retry the search. Please try again in a moment.",
-        );
+        setError("We couldn't retry the search. Please try again in a moment.");
         return;
       }
-      dispatch(
-        runQueued({ runId: result.runId, keyword: lastSearch.keyword }),
-      );
+      dispatch(runQueued({ runId: result.runId, keyword: lastSearch.keyword }));
     });
   }
 

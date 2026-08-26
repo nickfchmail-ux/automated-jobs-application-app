@@ -2,7 +2,11 @@
 
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import type { CoverLetterStatus, ResumeStatus } from "@/types/api";
+import type {
+  CoverLetterStatus,
+  DocumentVersion,
+  ResumeStatus,
+} from "@/types/api";
 import { revalidatePath } from "next/cache";
 
 /* ------------------------------------------------------------------ */
@@ -45,12 +49,18 @@ export type TriggerDocumentResult =
  * The Azure function marks `resume_status = building`, enqueues to the
  * `resume-requests` queue, and returns 202. Realtime + socket `job:state`
  * surface the completed/failed state back to the job detail page.
+ *
+ * `refinement` — when present, the worker regenerates the resume applying the
+ * user's note ON TOP of the latest completed version.
+ * `basedOn` — the version number this generation is built FROM (for the
+ * fine-tune version nav); the worker uses it to fetch the source document.
  */
 export async function triggerResumeAction(
   jobId: string,
   refinement?: string,
+  basedOn?: number,
 ): Promise<TriggerDocumentResult> {
-  return triggerDocument(jobId, "resume", refinement);
+  return triggerDocument(jobId, "resume", refinement, basedOn);
 }
 
 /**
@@ -61,14 +71,16 @@ export async function triggerResumeAction(
 export async function triggerCoverLetterAction(
   jobId: string,
   refinement?: string,
+  basedOn?: number,
 ): Promise<TriggerDocumentResult> {
-  return triggerDocument(jobId, "cover-letter", refinement);
+  return triggerDocument(jobId, "cover-letter", refinement, basedOn);
 }
 
 async function triggerDocument(
   jobId: string,
   type: "resume" | "cover-letter",
   refinement?: string,
+  basedOn?: number,
 ): Promise<TriggerDocumentResult> {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
@@ -87,6 +99,7 @@ async function triggerDocument(
         userId,
         type,
         ...(refinement ? { refinement } : {}),
+        ...(basedOn ? { basedOn } : {}),
       }),
       signal: controller.signal,
       cache: "no-store",
@@ -124,6 +137,8 @@ export type JobDocumentState = {
   resume_url: string | null;
   cover_letter_status: CoverLetterStatus | null;
   cover_letter: string | null;
+  /** Per-version document state (fine-tune) — authoritative for the overlay. */
+  document_versions: DocumentVersion[];
 };
 
 /** Read the current document-generation + fit state for a job (scoped to user). */
@@ -147,6 +162,14 @@ export async function getJobDocumentStateAction(
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "Job not found." };
 
+  // Per-version document state — the overlay's version nav source of truth.
+  const { data: versions, error: vErr } = await supabase
+    .from("document_versions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("job_id", jobId)
+    .order("version", { ascending: true });
+
   return {
     ok: true,
     state: {
@@ -157,6 +180,7 @@ export async function getJobDocumentStateAction(
       cover_letter_status:
         (data.cover_letter_status as CoverLetterStatus | null) ?? null,
       cover_letter: (data.cover_letter as string | null) ?? null,
+      document_versions: vErr ? [] : ((versions ?? []) as DocumentVersion[]),
     },
   };
 }

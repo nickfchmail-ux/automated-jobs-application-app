@@ -3,6 +3,7 @@ import {
   generateCoverLetterForJob,
   generateTailoredResume,
 } from "../lib/documents.js";
+import { markDocumentVersionFailed } from "../lib/documentVersions.js";
 import { getSupabase } from "../lib/supabase.js";
 import type { DocumentRequestMessage } from "../shared/types.js";
 
@@ -12,9 +13,10 @@ import type { DocumentRequestMessage } from "../shared/types.js";
  *   - `resume-requests`       → resumeWorker       (generates a tailored resume)
  *   - `cover-letter-requests` → coverLetterWorker  (generates a cover letter)
  *
- * Each message is `{ type, jobId, userId, runId }`. On failure the worker
- * writes a `failed` status + error to the job row (scoped to the user), then
- * RETHROWS so Service Bus retries with backoff (maxDeliveryCount caps it).
+ * Each message is `{ type, jobId, userId, runId, version?, basedOn? }`. On
+ * failure the worker writes a `failed` status + error to the job row AND the
+ * `document_versions` row (scoped to the user), then RETHROWS so Service Bus
+ * retries with backoff (maxDeliveryCount caps it).
  *
  * These are fully independent of evaluation: generating a resume never
  * depends on a cover letter (or vice-versa), and neither depends on the
@@ -23,7 +25,7 @@ import type { DocumentRequestMessage } from "../shared/types.js";
 export const resumeWorker: ServiceBusQueueHandler<
   DocumentRequestMessage
 > = async (msg: DocumentRequestMessage, context: InvocationContext) => {
-  const { type, jobId, userId } = msg ?? {};
+  const { type, jobId, userId, version } = msg ?? {};
   if (type !== "resume" || !jobId || !userId) {
     context.error(`resumeWorker: malformed message`);
     return;
@@ -36,6 +38,17 @@ export const resumeWorker: ServiceBusQueueHandler<
     const errMsg = e instanceof Error ? e.message : "Resume generation failed";
     context.error(`resumeWorker failed: job=${jobId} ${errMsg}`);
     await markFailed("resume", jobId, userId, errMsg).catch(() => undefined);
+    // Surface the per-version failure too so the overlay's building tab
+    // resolves to "failed" instead of spinning forever.
+    if (version) {
+      await markDocumentVersionFailed({
+        userId,
+        jobId,
+        type: "resume",
+        version,
+        error: errMsg,
+      }).catch(() => undefined);
+    }
     throw e; // Service Bus retries
   }
 };
@@ -43,7 +56,7 @@ export const resumeWorker: ServiceBusQueueHandler<
 export const coverLetterWorker: ServiceBusQueueHandler<
   DocumentRequestMessage
 > = async (msg: DocumentRequestMessage, context: InvocationContext) => {
-  const { type, jobId, userId } = msg ?? {};
+  const { type, jobId, userId, version } = msg ?? {};
   if (type !== "cover-letter" || !jobId || !userId) {
     context.error(`coverLetterWorker: malformed message`);
     return;
@@ -61,6 +74,15 @@ export const coverLetterWorker: ServiceBusQueueHandler<
     await markFailed("cover-letter", jobId, userId, errMsg).catch(
       () => undefined,
     );
+    if (version) {
+      await markDocumentVersionFailed({
+        userId,
+        jobId,
+        type: "cover-letter",
+        version,
+        error: errMsg,
+      }).catch(() => undefined);
+    }
     throw e; // Service Bus retries
   }
 };

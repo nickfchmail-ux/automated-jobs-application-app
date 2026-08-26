@@ -313,7 +313,14 @@ export default function EvaluationStep() {
       disposed = true;
       clearInterval(interval);
     };
-  }, [evaluationActive, activeRunId, evaluationStatus, matchInFlight, scopedRuns, dispatch]);
+  }, [
+    evaluationActive,
+    activeRunId,
+    evaluationStatus,
+    matchInFlight,
+    scopedRuns,
+    dispatch,
+  ]);
 
   function handleMatch() {
     if (!selected) return;
