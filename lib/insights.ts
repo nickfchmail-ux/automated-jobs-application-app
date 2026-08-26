@@ -37,6 +37,7 @@ export interface Insights {
     applied: number;
     resumeBuilt: number;
     duplicate: number;
+    coverLetterBuilt: number;
   };
   /** Average fit score across evaluated jobs (0-100). */
   avgFitScore: number;
@@ -62,6 +63,51 @@ export interface Insights {
     matches: number;
     fitRate: number;
   }[];
+  /** Fit-score bucket distribution (great / possible / low). */
+  scoreBuckets: {
+    great: number;
+    possible: number;
+    low: number;
+    total: number;
+  };
+  /** Salary intelligence over MATCHES (real salary_min/max where available). */
+  salary: {
+    /** Median monthly salary (HKD) across matches with a salary range. */
+    medianMonthly: number;
+    /** Average monthly salary across matches with a salary range. */
+    avgMonthly: number;
+    /** Count of matches with a usable salary range. */
+    withSalary: number;
+    /** Monthly salary distribution buckets (HKD). */
+    distribution: { label: string; count: number }[];
+    /** Highest-paying search keywords (by avg monthly salary). */
+    topByKeyword: { keyword: string; avgMonthly: number; count: number }[];
+    /** Highest-paying job boards (by avg monthly salary). */
+    topByBoard: { board: string; avgMonthly: number; count: number }[];
+  };
+  /** The user's strongest matches (top fit_score, with justification). */
+  topMatches: {
+    id: string;
+    title: string;
+    company: string;
+    fitScore: number;
+    justification: string;
+    salary: string;
+    applied: boolean;
+    board: string;
+    searchKey: string;
+    coverLetterDone: boolean;
+  }[];
+  /** Application momentum (conversion rates + counts). */
+  momentum: {
+    applied: number;
+    appliedRate: number;
+    notInterested: number;
+    matchesNotApplied: number;
+    coverLetterDone: number;
+    coverLetterRate: number;
+    resumeDone: number;
+  };
 }
 
 /** Pull the tokens out of a list of free-text reasons (fit_reasons / not_fit_reasons). */
@@ -132,11 +178,6 @@ function tokenize(reasons: string[]): string[] {
   // Only keep phrases that START with a proper noun / tech term (capitalized
   // or a known tool pattern), so we surface "React", "Next.js", "Django"
   // instead of fragments like "years of" or "which is".
-  const isGoodStart = (word: string) =>
-    /^[A-Z]/.test(word) ||
-    /^[A-Za-z0-9]+[+#.]/.test(word) ||
-    /^[a-z]{2,}$/.test(word);
-
   for (const r of reasons ?? []) {
     const s = String(r ?? "");
     // Match noun phrases: capitalized tech terms + one following word.
@@ -182,7 +223,7 @@ export async function getInsights(userId: string): Promise<Insights> {
   const { data, error } = await supabase
     .from("jobs")
     .select(
-      "id, fit, fit_score, fit_reasons, not_fit_reasons, applied, board, search_key, status, resume_status, pipeline_run_id, interested_in, created_at",
+      "id, fit, fit_score, fit_reasons, not_fit_reasons, applied, board, search_key, status, resume_status, cover_letter_status, pipeline_run_id, interested_in, created_at, title, company, justification, expected_salary, salary_min, salary_max, salary_currency, salary_period",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -201,9 +242,18 @@ export async function getInsights(userId: string): Promise<Insights> {
     search_key: string | null;
     status: string | null;
     resume_status: string | null;
+    cover_letter_status: string | null;
     pipeline_run_id: string | null;
     interested_in: boolean | null;
     created_at: string;
+    title: string | null;
+    company: string | null;
+    justification: string | null;
+    expected_salary: string | null;
+    salary_min: number | null;
+    salary_max: number | null;
+    salary_currency: string | null;
+    salary_period: string | null;
   })[];
 
   const evaluated = jobs.filter((j) => j.fit !== null);
@@ -283,6 +333,135 @@ export async function getInsights(userId: string): Promise<Insights> {
     .sort((a, b) => b.fitRate - a.fitRate)
     .slice(0, 6);
 
+  // ── Fit-score bucket distribution ────────────────────────────────
+  const scoreBuckets = { great: 0, possible: 0, low: 0, total: evaluated.length };
+  for (const j of evaluated) {
+    const s = Number(j.fit_score ?? 0);
+    if (s >= 75) scoreBuckets.great++;
+    else if (s >= 50) scoreBuckets.possible++;
+    else scoreBuckets.low++;
+  }
+
+  // ── Salary intelligence (over MATCHES with a real salary range) ──
+  // Normalize to monthly HKD for comparison.
+  const toMonthly = (j: typeof evaluated[number]): number | null => {
+    if (j.salary_min == null || j.salary_max == null) return null;
+    let min = Number(j.salary_min);
+    let max = Number(j.salary_max);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0) return null;
+    const period = String(j.salary_period ?? "month").toLowerCase();
+    if (period.includes("year") || period.includes("annual")) {
+      min /= 12;
+      max /= 12;
+    } else if (period.includes("hour") || period.includes("hr")) {
+      min *= 160; // ~full-time hours/month
+      max *= 160;
+    }
+    return Math.round((min + max) / 2);
+  };
+
+  const salaries = matches
+    .map((j) => ({ j, monthly: toMonthly(j) }))
+    .filter((x): x is { j: (typeof matches)[number]; monthly: number } =>
+      x.monthly !== null && x.monthly > 0,
+    );
+  const monthlyVals = salaries.map((s) => s.monthly).sort((a, b) => a - b);
+  const medianMonthly = monthlyVals.length
+    ? monthlyVals[Math.floor(monthlyVals.length / 2)]
+    : 0;
+  const avgMonthly = monthlyVals.length
+    ? Math.round(
+        monthlyVals.reduce((a, b) => a + b, 0) / monthlyVals.length,
+      )
+    : 0;
+
+  const salaryDistribution = [
+    { label: "≤ 15k", count: 0 },
+    { label: "15–25k", count: 0 },
+    { label: "25–40k", count: 0 },
+    { label: "40–60k", count: 0 },
+    { label: "60k+", count: 0 },
+  ];
+  for (const v of monthlyVals) {
+    if (v <= 15000) salaryDistribution[0].count++;
+    else if (v <= 25000) salaryDistribution[1].count++;
+    else if (v <= 40000) salaryDistribution[2].count++;
+    else if (v <= 60000) salaryDistribution[3].count++;
+    else salaryDistribution[4].count++;
+  }
+
+  // Highest-paying keywords + boards (by avg monthly salary of matches).
+  const salByKw = new Map<string, { sum: number; count: number }>();
+  const salByBoard = new Map<string, { sum: number; count: number }>();
+  for (const { j, monthly } of salaries) {
+    const kw = String(j.search_key ?? "general");
+    const e = salByKw.get(kw) ?? { sum: 0, count: 0 };
+    e.sum += monthly;
+    e.count++;
+    salByKw.set(kw, e);
+    const b = String(j.board ?? "other");
+    const eb = salByBoard.get(b) ?? { sum: 0, count: 0 };
+    eb.sum += monthly;
+    eb.count++;
+    salByBoard.set(b, eb);
+  }
+  const salaryTopKw = [...salByKw.entries()]
+    .map(([keyword, e]) => ({
+      keyword,
+      avgMonthly: Math.round(e.sum / e.count),
+      count: e.count,
+    }))
+    .filter((k) => k.count >= 1)
+    .sort((a, b) => b.avgMonthly - a.avgMonthly)
+    .slice(0, 5);
+  const salaryTopBoard = [...salByBoard.entries()]
+    .map(([board, e]) => ({
+      board,
+      avgMonthly: Math.round(e.sum / e.count),
+      count: e.count,
+    }))
+    .filter((k) => k.count >= 1)
+    .sort((a, b) => b.avgMonthly - a.avgMonthly)
+    .slice(0, 5);
+
+  // ── Top matches (strongest fit with justification + salary) ──────
+  const topMatches = matches
+    .map((j) => ({
+      id: String(j.id),
+      title: String(j.title ?? "Untitled role"),
+      company: String(j.company ?? "Unknown company"),
+      fitScore: Math.round(Number(j.fit_score ?? 0)),
+      justification: String(j.justification ?? ""),
+      salary: String(j.expected_salary ?? ""),
+      applied: j.applied === true,
+      board: String(j.board ?? ""),
+      searchKey: String(j.search_key ?? ""),
+      coverLetterDone: j.cover_letter_status === "completed",
+    }))
+    .sort((a, b) => b.fitScore - a.fitScore)
+    .slice(0, 6);
+
+  // ── Application momentum ─────────────────────────────────────────
+  const appliedCount = jobs.filter((j) => j.applied === true).length;
+  const notInterestedCount = jobs.filter((j) => j.interested_in === false).length;
+  const coverLetterDone = jobs.filter(
+    (j) => j.cover_letter_status === "completed",
+  ).length;
+  const resumeDone = jobs.filter((j) => j.resume_status === "completed").length;
+  const momentum = {
+    applied: appliedCount,
+    appliedRate: matches.length
+      ? Math.round((appliedCount / matches.length) * 100)
+      : 0,
+    notInterested: notInterestedCount,
+    matchesNotApplied: matches.length - appliedCount,
+    coverLetterDone,
+    coverLetterRate: matches.length
+      ? Math.round((coverLetterDone / matches.length) * 100)
+      : 0,
+    resumeDone,
+  };
+
   return {
     totals: {
       scraped: jobs.length,
@@ -290,8 +469,9 @@ export async function getInsights(userId: string): Promise<Insights> {
       reviewed: jobs.filter((j) => j.interested_in !== false).length,
       matches: matches.length,
       notFit: notFit.length,
-      applied: jobs.filter((j) => j.applied === true).length,
-      resumeBuilt: jobs.filter((j) => j.resume_status === "completed").length,
+      applied: appliedCount,
+      resumeBuilt: resumeDone,
+      coverLetterBuilt: coverLetterDone,
       duplicate: jobs.filter((j) => j.status === "duplicate").length,
     },
     avgFitScore,
@@ -301,5 +481,16 @@ export async function getInsights(userId: string): Promise<Insights> {
     trend,
     byBoard,
     byKeyword,
+    scoreBuckets,
+    salary: {
+      medianMonthly,
+      avgMonthly,
+      withSalary: monthlyVals.length,
+      distribution: salaryDistribution,
+      topByKeyword: salaryTopKw,
+      topByBoard: salaryTopBoard,
+    },
+    topMatches,
+    momentum,
   };
 }

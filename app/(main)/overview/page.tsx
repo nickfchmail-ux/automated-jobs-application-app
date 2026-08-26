@@ -8,12 +8,21 @@ export const revalidate = 0;
 
 export const metadata = { title: "Overview" };
 
+/** Format a monthly HKD figure as a compact salary string. */
+function formatSalary(v: number): string {
+  if (v <= 0) return "—";
+  if (v >= 1000) return `${(v / 1000).toFixed(0)}k`;
+  return String(v);
+}
+
 /**
  * The real dashboard — an intelligence briefing on the user's job search.
  *
  * Signature element: the "Fit Profile" headline — a serif figure showing
  * the match rate, flanked by the user's top strengths and top gaps, plus a
- * trend sparkline. Below: a pipeline funnel and board/keyword mix.
+ * trend sparkline. Below: a pipeline funnel and board/keyword mix, plus
+ * deeper analytics: score distribution, salary intelligence, top matches,
+ * application momentum, and actionable takeaways.
  */
 export default async function OverviewPage() {
   const userId = await getUserId();
@@ -26,6 +35,44 @@ export default async function OverviewPage() {
     total.evaluated > 0
       ? Math.round((total.matches / total.evaluated) * 100)
       : 0;
+  const { scoreBuckets, salary, momentum, topMatches } = insights;
+
+  // Actionable takeaways — computed from the data.
+  const takeaways: { icon: string; tone: string; text: string }[] = [];
+  if (momentum.matchesNotApplied > 0) {
+    takeaways.push({
+      icon: "📬",
+      tone: "text-[var(--accent-ink)]",
+      text: `${momentum.matchesNotApplied} strong match${momentum.matchesNotApplied === 1 ? "" : "es"} haven't been applied to yet — start with your top match.`,
+    });
+  }
+  if (insights.gaps.length > 0) {
+    takeaways.push({
+      icon: "🎯",
+      tone: "text-[var(--bad)]",
+      text: `Closing the “${insights.gaps[0].term}” gap (appears in ${Math.round(insights.gaps[0].share * 100)}% of rejections) could unlock more matches.`,
+    });
+  }
+  if (salary.withSalary > 0 && salary.topByKeyword.length > 0) {
+    takeaways.push({
+      icon: "💰",
+      tone: "text-[var(--good)]",
+      text: `Your best-paid search is “${salary.topByKeyword[0].keyword}” — averaging ${formatSalary(salary.topByKeyword[0].avgMonthly)}/month.`,
+    });
+  }
+  if (momentum.coverLetterRate < 60 && total.matches > 0) {
+    takeaways.push({
+      icon: "✍️",
+      tone: "text-[var(--accent-ink)]",
+      text: `Only ${momentum.coverLetterRate}% of matches have a cover letter ready — generate the rest to apply faster.`,    });
+  }
+  if (takeaways.length === 0 && total.evaluated === 0) {
+    takeaways.push({
+      icon: "🚀",
+      tone: "text-[var(--ink-soft)]",
+      text: "Run your first search to start seeing analytics here.",
+    });
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10 space-y-10">
@@ -38,7 +85,8 @@ export default async function OverviewPage() {
           </h1>
           <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-xl">
             A live read on how your profile is landing — what you match on,
-            what's holding you back, and how the numbers move.
+            what&apos;s holding you back, what it pays, and how the numbers
+            move.
           </p>
         </div>
         <Link
@@ -65,6 +113,20 @@ export default async function OverviewPage() {
                 {total.matches} of {total.evaluated} evaluated jobs fit your
                 profile
               </p>
+              <div className="mt-4 flex flex-wrap gap-4 text-xs text-[var(--ink-soft)]">
+                <span>
+                  Avg score{" "}
+                  <span className="font-data text-[var(--ink)] tabular-nums">
+                    {insights.avgFitScore}
+                  </span>
+                </span>
+                <span>
+                  Median{" "}
+                  <span className="font-data text-[var(--ink)] tabular-nums">
+                    {insights.medianFitScore}
+                  </span>
+                </span>
+              </div>
             </div>
             <div className="flex items-end gap-1 h-16">
               {insights.trend.map((t, i) => (
@@ -144,6 +206,214 @@ export default async function OverviewPage() {
         </div>
       </section>
 
+      {/* ── Score distribution + salary snapshot ───────────── */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Score distribution */}
+        <div className="card p-8">
+          <p className="eyebrow">Fit score distribution</p>
+          <p className="mt-2 text-sm text-[var(--ink-soft)]">
+            How your evaluated jobs break down
+          </p>
+          <div className="mt-6 space-y-4">
+            {[
+              {
+                label: "Strong fit (75+)",
+                value: scoreBuckets.great,
+                color: "bg-[var(--good)]",
+                pct:
+                  scoreBuckets.total > 0
+                    ? Math.round((scoreBuckets.great / scoreBuckets.total) * 100)
+                    : 0,
+              },
+              {
+                label: "Possible (50–74)",
+                value: scoreBuckets.possible,
+                color: "bg-[var(--accent)]",
+                pct:
+                  scoreBuckets.total > 0
+                    ? Math.round(
+                        (scoreBuckets.possible / scoreBuckets.total) * 100,
+                      )
+                    : 0,
+              },
+              {
+                label: "Low (below 50)",
+                value: scoreBuckets.low,
+                color: "bg-[var(--bad)]",
+                pct:
+                  scoreBuckets.total > 0
+                    ? Math.round((scoreBuckets.low / scoreBuckets.total) * 100)
+                    : 0,
+              },
+            ].map((b) => (
+              <div key={b.label}>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-[var(--ink)]">{b.label}</span>
+                  <span className="font-data text-xs text-[var(--ink-soft)] tabular-nums">
+                    {b.value} · {b.pct}%
+                  </span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-[var(--paper-soft)] overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${b.color}`}
+                    style={{ width: `${Math.max(2, b.pct)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Salary snapshot */}
+        <div className="card p-8">
+          <p className="eyebrow">Salary intelligence</p>
+          <p className="mt-2 text-sm text-[var(--ink-soft)]">
+            What your matches pay (monthly, HKD)
+          </p>
+          {salary.withSalary > 0 ? (
+            <>
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-[var(--paper-soft)] p-4">
+                  <p className="text-xs text-[var(--ink-soft)]">Median match</p>
+                  <p className="mt-1 font-data text-3xl font-semibold text-[var(--ink)] tabular-nums">
+                    ${formatSalary(salary.medianMonthly)}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-[var(--paper-soft)] p-4">
+                  <p className="text-xs text-[var(--ink-soft)]">Average match</p>
+                  <p className="mt-1 font-data text-3xl font-semibold text-[var(--ink)] tabular-nums">
+                    ${formatSalary(salary.avgMonthly)}
+                  </p>
+                </div>
+              </div>
+              {/* Distribution bars */}
+              <div className="mt-6 flex items-end gap-2 h-28">
+                {salary.distribution.map((d, i) => {
+                  const max = Math.max(
+                    1,
+                    ...salary.distribution.map((x) => x.count),
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 flex flex-col items-center gap-1"
+                    >
+                      <span className="font-data text-xs text-[var(--ink-soft)] tabular-nums">
+                        {d.count}
+                      </span>
+                      <div
+                        className="w-full rounded-t bg-[var(--good)]"
+                        style={{ height: `${(d.count / max) * 100}%` }}
+                      />
+                      <span className="text-[10px] text-[var(--ink-faint)] whitespace-nowrap">
+                        {d.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="mt-6 text-sm text-[var(--ink-faint)]">
+              No salary data on your matches yet — evaluate more jobs.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ── Top matches ────────────────────────────────────── */}
+      {topMatches.length > 0 && (
+        <section className="card p-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="eyebrow">Your best matches</p>
+              <p className="mt-2 text-sm text-[var(--ink-soft)]">
+                The highest-scoring roles, with why they fit
+              </p>
+            </div>
+            <Link
+              href="/matches"
+              className="text-sm font-semibold text-[var(--accent-ink)] hover:underline"
+            >
+              View all →
+            </Link>
+          </div>
+          <ul className="mt-6 divide-y divide-[var(--line)]">
+            {topMatches.map((m) => (
+              <li key={m.id} className="py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        href={`/jobs/${m.id}`}
+                        className="font-medium text-[var(--ink)] hover:underline truncate"
+                      >
+                        {m.title}
+                      </Link>
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-[var(--good-soft)] text-[var(--good)]">
+                        {m.fitScore}
+                      </span>
+                      {m.applied && (
+                        <span className="rounded-full px-2 py-0.5 text-[11px] font-medium bg-[var(--paper-soft)] text-[var(--ink-soft)]">
+                          Applied
+                        </span>
+                      )}
+                      {m.coverLetterDone && (
+                        <span className="rounded-full px-2 py-0.5 text-[11px] font-medium bg-[var(--accent-soft)] text-[var(--accent-ink)]">
+                          Letter ready
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                      {m.company}
+                      {m.board && (
+                        <span className="capitalize"> · {m.board}</span>
+                      )}
+                    </p>
+                    {m.justification && (
+                      <p className="mt-1.5 text-sm text-[var(--ink-soft)] leading-relaxed">
+                        {m.justification}
+                      </p>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {m.salary && (
+                      <p className="text-sm font-medium text-[var(--ink)]">
+                        {m.salary}
+                      </p>
+                    )}
+                    <Link
+                      href={`/jobs/${m.id}`}
+                      className="mt-1 inline-block text-xs font-semibold text-[var(--accent-ink)] hover:underline"
+                    >
+                      Open →
+                    </Link>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* ── Actionable takeaways ───────────────────────────── */}
+      {takeaways.length > 0 && (
+        <section className="card p-8">
+          <p className="eyebrow">What to do next</p>
+          <ul className="mt-5 space-y-3">
+            {takeaways.map((t, i) => (
+              <li
+                key={i}
+                className="flex items-start gap-3 text-sm text-[var(--ink-soft)]"
+              >
+                <span className="shrink-0 text-base leading-6">{t.icon}</span>
+                <span className={t.tone}>{t.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* ── Pipeline funnel ─────────────────────────────────── */}
       <section className="card p-8">
         <p className="eyebrow">Pipeline</p>
@@ -154,8 +424,8 @@ export default async function OverviewPage() {
             { label: "Matches", value: total.matches, href: "/matches" },
             { label: "Applied", value: total.applied, href: "/matches" },
             {
-              label: "Resumes built",
-              value: total.resumeBuilt,
+              label: "Letters built",
+              value: total.coverLetterBuilt,
               href: "/matches",
             },
             { label: "Not a fit", value: total.notFit, href: "/matches" },
@@ -170,6 +440,46 @@ export default async function OverviewPage() {
               </p>
               <p className="mt-1 text-xs text-[var(--ink-soft)]">{s.label}</p>
             </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Application momentum ───────────────────────────── */}
+      <section className="card p-8">
+        <p className="eyebrow">Application momentum</p>
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-px overflow-hidden rounded-xl bg-[var(--line)]">
+          {[
+            {
+              label: "Applied",
+              value: `${momentum.applied}`,
+              sub: `${momentum.appliedRate}% of matches`,
+            },
+            {
+              label: "Not interested",
+              value: `${momentum.notInterested}`,
+              sub: "dismissed",
+            },
+            {
+              label: "Cover letters",
+              value: `${momentum.coverLetterDone}`,
+              sub: `${momentum.coverLetterRate}% of matches`,
+            },
+            {
+              label: "Resumes built",
+              value: `${momentum.resumeDone}`,
+              sub: "ready to send",
+            },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="bg-[var(--surface)] p-5"
+            >
+              <p className="font-data text-3xl font-semibold text-[var(--ink)] tabular-nums">
+                {s.value}
+              </p>
+              <p className="mt-1 text-xs text-[var(--ink-soft)]">{s.label}</p>
+              <p className="text-[11px] text-[var(--ink-faint)]">{s.sub}</p>
+            </div>
           ))}
         </div>
       </section>
