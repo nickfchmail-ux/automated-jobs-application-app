@@ -197,16 +197,6 @@ export default function Navbar() {
     </form>
   );
 
-  const startSearchCta = (
-    <button
-      onClick={() => go("/search")}
-      className="w-full flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-ink)] text-white font-semibold text-sm px-4 py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
-    >
-      <AutoAwesomeIcon className="w-4 h-4" />
-      Search &amp; match
-    </button>
-  );
-
   const shell = (
     <div className="h-full flex flex-col bg-[var(--accent-soft)] border-r border-[var(--line)]">
       {/* Brand — business logo, full sidebar width */}
@@ -220,9 +210,6 @@ export default function Navbar() {
           />
         </Link>
       </div>
-
-      {/* CTA */}
-      <div className="px-4 pt-3">{startSearchCta}</div>
 
       {/* Nav groups */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
