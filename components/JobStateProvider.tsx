@@ -5,7 +5,6 @@ import { getRealtimeSession } from "@/app/actions/realtime";
 import { getSupabaseBrowser, setSupabaseSession } from "@/lib/supabase-browser";
 import type {
   CoverLetterStatus,
-  DocumentVersion,
   ResumeStatus,
   SocketJobStateEvent,
 } from "@/types/api";
@@ -30,8 +29,6 @@ export interface JobLiveState {
   fit: boolean | null;
   fitScore: number | null;
   error: string | null;
-  /** Per-version document state (fine-tune) — version nav source of truth. */
-  documentVersions: DocumentVersion[];
 }
 
 const JobStateContext = createContext<JobLiveState | null>(null);
@@ -69,7 +66,6 @@ export default function JobStateProvider({
     fit: initialState?.fit ?? null,
     fitScore: initialState?.fitScore ?? null,
     error: null,
-    documentVersions: [],
   });
 
   const socketRef = useRef<Socket | null>(null);
@@ -95,7 +91,6 @@ export default function JobStateProvider({
           resumeUrl: res.state.resume_url,
           coverLetterStatus: res.state.cover_letter_status,
           coverLetter: res.state.cover_letter,
-          documentVersions: res.state.document_versions,
         });
       } else {
         patch({ error: res.error });
@@ -148,49 +143,6 @@ export default function JobStateProvider({
             });
           },
         )
-        // Fine-tune per-version state: INSERT/UPDATE/DELETE on
-        // document_versions for this job streams straight into the overlay's
-        // version nav (building → completed/failed, new version appears).
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "document_versions",
-            filter: `job_id=eq.${jobId}`,
-          },
-          (payload) => {
-            const row =
-              payload.eventType === "DELETE"
-                ? payload.old
-                : (payload.new as Partial<DocumentVersion> | null);
-            if (!row) return;
-            setState((prev) => {
-              const existing = prev.documentVersions ?? [];
-              const idx = existing.findIndex(
-                (v) => v.doc_type === row.doc_type && v.version === row.version,
-              );
-              if (payload.eventType === "DELETE") {
-                if (idx === -1) return prev;
-                const next = [...existing];
-                next.splice(idx, 1);
-                return { ...prev, documentVersions: next };
-              }
-              const updated = row as DocumentVersion;
-              if (idx === -1) {
-                return {
-                  ...prev,
-                  documentVersions: [...existing, updated].sort(
-                    (a, b) => a.version - b.version,
-                  ),
-                };
-              }
-              const next = [...existing];
-              next[idx] = updated;
-              return { ...prev, documentVersions: next };
-            });
-          },
-        )
         .subscribe();
       channelRef.current = channel;
 
@@ -238,46 +190,6 @@ export default function JobStateProvider({
     };
   }, [jobId]);
 
-  // ── Polling fallback ──────────────────────────────────────────────
-  // Realtime + socket are the primary live sources, but if either silently
-  // fails to deliver (stale channel, dropped socket), a building document
-  // would stay stuck on "Generating… / Regenerating…" forever. Poll the DB
-  // while a document is `building` so the status ALWAYS resolves to
-  // completed/failed — this is the touchpoint that breaks any stale loop.
-  const needsPoll =
-    state.resumeStatus === "building" ||
-    state.coverLetterStatus === "building" ||
-    state.documentVersions.some((v) => v.status === "building");
-  useEffect(() => {
-    if (!needsPoll || !jobId) return;
-    let disposed = false;
-    async function poll() {
-      if (disposed) return;
-      const res = await getJobDocumentStateAction(jobId);
-      if (disposed || !res.ok) return;
-      setState((prev) => {
-        const next = { ...prev };
-        if (res.state.resume_status !== undefined)
-          next.resumeStatus = res.state.resume_status;
-        if (res.state.resume_url !== undefined)
-          next.resumeUrl = res.state.resume_url;
-        if (res.state.cover_letter_status !== undefined)
-          next.coverLetterStatus = res.state.cover_letter_status;
-        if (res.state.cover_letter !== undefined)
-          next.coverLetter = res.state.cover_letter;
-        if (res.state.document_versions?.length)
-          next.documentVersions = res.state.document_versions;
-        return next;
-      });
-    }
-    void poll();
-    const interval = setInterval(poll, 3000);
-    return () => {
-      disposed = true;
-      clearInterval(interval);
-    };
-  }, [needsPoll, jobId]);
-
   const value = useMemo(() => state, [state]);
 
   return (
@@ -301,7 +213,6 @@ export function useJobState(): JobLiveState {
       fit: null,
       fitScore: null,
       error: null,
-      documentVersions: [],
     };
   }
   return ctx;

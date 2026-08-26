@@ -24,6 +24,7 @@
     "evaluateStatus",
     "evaluateWorker",
     "generateDocument",
+    "enhanceRefinement",
     "resumeWorker",
     "coverLetterWorker"
   ],
@@ -35,6 +36,7 @@
       "Function.evaluateStatus": "Information",
       "Function.evaluateWorker": "Information",
       "Function.generateDocument": "Information",
+      "Function.enhanceRefinement": "Information",
       "Function.resumeWorker": "Information",
       "Function.coverLetterWorker": "Information"
     }

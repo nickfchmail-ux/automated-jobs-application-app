@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  enhanceRefinementAction,
   triggerCoverLetterAction,
   triggerResumeAction,
 } from "@/app/actions/documents";
@@ -62,6 +63,8 @@ export default function DocumentPreviewOverlay({
   const [refinement, setRefinement] = useState("");
   const [requesting, setRequesting] = useState(false);
   const [fineTuneError, setFineTuneError] = useState<string | null>(null);
+  // AI-assist: rewrite the rough note into a clearer instruction.
+  const [enhancing, setEnhancing] = useState(false);
 
   // The active version object (may be undefined while loading).
   const active = versions[activeIdx];
@@ -213,6 +216,33 @@ export default function DocumentPreviewOverlay({
       }
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  /** Ask the AI to rewrite the current note into a clearer instruction and
+   *  REPLACE the textarea content (the user can still edit before applying). */
+  async function handleEnhance() {
+    if (enhancing) return;
+    const note = refinement.trim();
+    if (!note) {
+      setFineTuneError("Type something first, then use Enhance.");
+      return;
+    }
+    setFineTuneError(null);
+    setEnhancing(true);
+    try {
+      const res = await enhanceRefinementAction(note, type);
+      if (res.ok) {
+        setRefinement(res.enhanced);
+      } else {
+        setFineTuneError(
+          res.error === "Type something to enhance first."
+            ? "Type something first, then use Enhance."
+            : "Couldn't enhance that. Please try again in a moment.",
+        );
+      }
+    } finally {
+      setEnhancing(false);
     }
   }
 
@@ -569,18 +599,56 @@ export default function DocumentPreviewOverlay({
                   Cancel
                 </button>
               </div>
-              <textarea
-                value={refinement}
-                onChange={(e) => setRefinement(e.target.value)}
-                disabled={requesting || isActiveBuilding}
-                rows={2}
-                placeholder={
-                  type === "resume"
-                    ? "e.g. Emphasize my document processing and Excel skills; keep it to one page."
-                    : "e.g. Make it more concise and professional; focus on my administrative experience."
-                }
-                className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none disabled:opacity-60"
-              />
+              <div className="relative">
+                <textarea
+                  value={refinement}
+                  onChange={(e) => setRefinement(e.target.value)}
+                  disabled={requesting || isActiveBuilding || enhancing}
+                  rows={2}
+                  placeholder={
+                    type === "resume"
+                      ? "e.g. Emphasize my document processing and Excel skills; keep it to one page."
+                      : "e.g. Make it more concise and professional; focus on my administrative experience."
+                  }
+                  className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 pb-8 pr-24 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none disabled:opacity-60"
+                />
+                {/* AI-assist: rewrite the note into a clearer instruction and
+                    REPLACE the textarea content (bottom-right corner). */}
+                <button
+                  type="button"
+                  onClick={handleEnhance}
+                  disabled={enhancing || requesting || isActiveBuilding}
+                  className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Enhance this instruction with AI"
+                >
+                  {enhancing ? (
+                    <>
+                      <DotLoader
+                        dotClassName="bg-white"
+                        className="scale-50 origin-center"
+                      />
+                      Enhancing…
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                        />
+                      </svg>
+                      Enhance
+                    </>
+                  )}
+                </button>
+              </div>
               {fineTuneError && (
                 <p className="text-xs text-red-600 dark:text-red-400">
                   {fineTuneError}

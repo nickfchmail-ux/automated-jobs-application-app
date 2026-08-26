@@ -39,6 +39,14 @@ const EVALUATOR_FUNCTION_KEY =
   process.env.AZURE_EVALUATOR_DOCUMENTS_KEY ||
   process.env.AZURE_EVALUATOR_KEY ||
   "";
+/**
+ * Host (master) key for the evaluator — authorizes EVERY function, including
+ * the newer `enhanceRefinement` trigger that has its OWN function key. The
+ * per-function `generateDocument` key returns 401 on it, so the enhance
+ * action uses this instead.
+ */
+const EVALUATOR_HOST_KEY =
+  process.env.AZURE_EVALUATOR_HOST_KEY || EVALUATOR_FUNCTION_KEY;
 
 export type TriggerDocumentResult =
   | { ok: true; jobId: string; type: "resume" | "cover-letter" }
@@ -123,6 +131,72 @@ async function triggerDocument(
     }
     console.error(`[triggerDocument] ${type} network error:`, e);
     return { ok: false, error: "Could not reach the document service." };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  AI-assist for the fine-tune input.                                */
+/*                                                                     */
+/*  Rewrites the user's rough refinement note into a clearer, specific  */
+/*  instruction via the evaluator's `enhanceRefinement` function. The   */
+/*  result REPLACES the user's textarea (they can still edit before    */
+/*  clicking Regenerate).                                              */
+/* ------------------------------------------------------------------ */
+
+export type EnhanceRefinementResult =
+  | { ok: true; enhanced: string }
+  | { ok: false; error: string };
+
+/** Ask the AI to rewrite a rough fine-tune note into a clear instruction. */
+export async function enhanceRefinementAction(
+  refinement: string,
+  type: "resume" | "cover-letter",
+): Promise<EnhanceRefinementResult> {
+  const userId = await getUserId();
+  if (!userId) return { ok: false, error: "Not authenticated." };
+  const note = refinement.trim();
+  if (!note) return { ok: false, error: "Type something to enhance first." };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const res = await fetch(
+      `${EVALUATOR_BASE_URL}/api/documents/enhance-refinement`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-functions-key": EVALUATOR_HOST_KEY,
+        },
+        body: JSON.stringify({ refinement: note, type }),
+        signal: controller.signal,
+        cache: "no-store",
+      },
+    );
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return {
+        ok: false,
+        error: body?.error ?? `Server error ${res.status}`,
+      };
+    }
+    const data = await res.json();
+    const enhanced =
+      typeof data?.enhanced === "string" ? data.enhanced.trim() : "";
+    if (!enhanced) return { ok: false, error: "Empty AI response." };
+    return { ok: true, enhanced };
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return {
+        ok: false,
+        error: "The AI took too long. Please try again.",
+      };
+    }
+    console.error(`[enhanceRefinementAction] network error:`, e);
+    return { ok: false, error: "Could not reach the AI service." };
   }
 }
 

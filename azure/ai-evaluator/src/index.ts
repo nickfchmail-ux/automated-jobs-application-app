@@ -2,6 +2,7 @@ import { app } from "@azure/functions";
 import "dotenv/config";
 
 import { coverLetterWorker, resumeWorker } from "./functions/documentWorker.js";
+import { enhanceRefinement } from "./functions/enhanceRefinement.js";
 import { evaluate } from "./functions/evaluate.js";
 import { evaluateStatus } from "./functions/evaluateStatus.js";
 import { evaluateWorker } from "./functions/evaluateWorker.js";
@@ -43,6 +44,17 @@ app.http("generateDocument", {
   authLevel: "function",
   route: "documents/generate",
   handler: generateDocument,
+});
+
+/**
+ * POST /api/documents/enhance-refinement — AI-assist that rewrites the user's
+ * rough fine-tune note into a clearer instruction (replaces the textarea).
+ */
+app.http("enhanceRefinement", {
+  methods: ["POST"],
+  authLevel: "function",
+  route: "documents/enhance-refinement",
+  handler: enhanceRefinement,
 });
 
 app.serviceBusQueue("evaluateWorker", {
