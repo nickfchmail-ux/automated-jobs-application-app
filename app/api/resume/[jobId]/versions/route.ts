@@ -1,7 +1,7 @@
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { NextRequest, NextResponse } from "next/server";
 import type { DocumentVersion } from "@/types/api";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * GET /api/resume/[jobId]/versions
@@ -35,7 +35,14 @@ export async function GET(
 
   if (error) {
     // Table may not exist yet (migration not applied) → fall back to legacy.
-    if (isMissingTable(error)) return legacyVersions(userId, jobId);
+    if (isMissingTable(error)) {
+      const legacy = await getLegacyResumeVersion(userId, jobId);
+      if (legacy) return NextResponse.json({ versions: [legacy] });
+      return NextResponse.json(
+        { error: "No tailored resume found for this job." },
+        { status: 404 },
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
@@ -52,47 +59,59 @@ export async function GET(
       error: r.error,
     }));
 
-  // No versioned rows yet — fall back to the legacy (un-versioned) resume so
-  // existing generated resumes stay viewable after the migration.
+  // Merge the LEGACY un-versioned resume (v1 original) if it exists AND a
+  // document_versions row for v1 doesn't already. This keeps legacy jobs
+  // (resume generated before the version feature) showing BOTH the original
+  // v1 and any fine-tuned v2+ side by side.
+  const hasV1 = versions.some((v) => v.version === 1);
+  if (!hasV1) {
+    const legacy = await getLegacyResumeVersion(userId, jobId);
+    if (legacy) versions.unshift(legacy);
+  }
+
   if (versions.length === 0) {
-    const legacy = await legacyVersions(userId, jobId);
-    if (legacy.status !== 404) return legacy;
+    return NextResponse.json(
+      { error: "No tailored resume found for this job." },
+      { status: 404 },
+    );
   }
 
   return NextResponse.json({ versions });
 }
 
-/** Legacy fallback — the un-versioned `<userId>-<jobId>.html` (v1 original). */
-async function legacyVersions(userId: string, jobId: string) {
+/** The legacy un-versioned resume `<userId>-<jobId>.html` as a v1 nav entry. */
+async function getLegacyResumeVersion(
+  userId: string,
+  jobId: string,
+): Promise<{
+  id: string;
+  version: number;
+  label: string;
+  url: string;
+  status: "building" | "completed" | "failed";
+  refinement: string | null;
+  basedOn: number | null;
+  error: string | null;
+} | null> {
   const { data: row, error } = await supabase
     .from("generated_resumes")
     .select("file_name")
     .eq("job_id", jobId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  if (!row?.file_name) {
-    return NextResponse.json(
-      { error: "No tailored resume found for this job." },
-      { status: 404 },
-    );
-  }
-  return NextResponse.json({
-    versions: [
-      {
-        id: "legacy",
-        version: 1,
-        label: "v1",
-        url: `/api/resume/${jobId}`,
-        status: "completed",
-        refinement: null,
-        basedOn: null,
-        error: null,
-      },
-    ],
-  });
+  if (error || !row?.file_name) return null;
+  // Only treat it as legacy v1 if the file is the un-versioned name.
+  if (!row.file_name.endsWith(`${userId}-${jobId}.html`)) return null;
+  return {
+    id: "legacy",
+    version: 1,
+    label: "v1",
+    url: `/api/resume/${jobId}`,
+    status: "completed",
+    refinement: null,
+    basedOn: null,
+    error: null,
+  };
 }
 
 function isMissingTable(error: { message?: string; code?: string }): boolean {

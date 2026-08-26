@@ -4,7 +4,10 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { markDocumentVersionBuilding, nextDocumentVersion } from "../lib/documentVersions.js";
+import {
+  markDocumentVersionBuilding,
+  nextDocumentVersion,
+} from "../lib/documentVersions.js";
 import { enqueueDocumentRequest } from "../lib/serviceBus.js";
 import { getSupabase } from "../lib/supabase.js";
 import type {
@@ -66,12 +69,14 @@ export const generateDocument: HttpHandler = async (
       ? body.refinement.trim().slice(0, 2000)
       : undefined;
   const version =
-    typeof body?.version === "number" && Number.isInteger(body.version) &&
+    typeof body?.version === "number" &&
+    Number.isInteger(body.version) &&
     body.version >= 1
       ? body.version
       : undefined;
   const basedOn =
-    typeof body?.basedOn === "number" && Number.isInteger(body.basedOn) &&
+    typeof body?.basedOn === "number" &&
+    Number.isInteger(body.basedOn) &&
     body.basedOn >= 1
       ? body.basedOn
       : undefined;

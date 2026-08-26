@@ -27,13 +27,31 @@ const EXT: Record<DocType, string> = {
   "cover-letter": ".txt",
 };
 
-/** The next version number for (user, job, type): max existing + 1. */
+/** The next version number for (user, job, type): max existing + 1.
+ *
+ * "Existing" includes:
+ *   1. `document_versions` rows (versioned generations from the new flow)
+ *   2. Versioned storage files (`<base>-v<N>.<ext>`) — e.g. if a worker ran
+ *      before rows were written
+ *   3. The LEGACY un-versioned file (`<base>.<ext>`) — a resume/cover letter
+ *      generated BEFORE the version feature, which is implicitly v1
+ *
+ * This matters for legacy jobs: if a user has an old un-versioned resume
+ * (v1) and clicks Fine-tune, the new version MUST be v2 — not v1 (which
+ * would collide with the legacy artifact and never show in the overlay).
+ */
 export async function nextDocumentVersion(
   userId: string,
   jobId: string,
   type: DocType,
 ): Promise<number> {
   const sb = getSupabase();
+  const baseName = `${userId}-${jobId}`;
+  const ext = EXT[type];
+
+  let maxVersion = 0;
+
+  // 1. Highest version in document_versions.
   const { data, error } = await sb
     .from("document_versions")
     .select("version")
@@ -44,10 +62,42 @@ export async function nextDocumentVersion(
     .limit(1)
     .maybeSingle();
   if (error && error.code !== "PGRST116") {
-    // PGRST116 = no rows; any other error is real but non-fatal — start at 1.
-    throw new Error(`Failed to read document versions: ${error.message}`);
+    // PGRST116 = no rows; any other error is real but non-fatal — fall back
+    // to scanning storage so generation never breaks on a DB hiccup.
+    console.warn(
+      `nextDocumentVersion: document_versions read failed: ${error.message}`,
+    );
+  } else if (data) {
+    maxVersion = Math.max(maxVersion, data.version);
   }
-  return data ? data.version + 1 : 1;
+
+  // 2 + 3. Storage files — both versioned (`-v<N>`) and the legacy
+  // un-versioned file (counts as v1).
+  try {
+    const { data: files, error: listErr } = await sb.storage
+      .from(BUCKETS[type])
+      .list("", { search: baseName });
+    if (!listErr && files) {
+      for (const f of files) {
+        // Legacy un-versioned file → v1.
+        if (f.name === `${baseName}${ext}`) {
+          maxVersion = Math.max(maxVersion, 1);
+          continue;
+        }
+        // Versioned file → parse its number.
+        if (f.name.startsWith(`${baseName}-v`)) {
+          const m = f.name.match(new RegExp(`-v(\\d+)\\${ext}$`));
+          if (m) maxVersion = Math.max(maxVersion, parseInt(m[1], 10));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(
+      `nextDocumentVersion: storage scan failed: ${e instanceof Error ? e.message : e}`,
+    );
+  }
+
+  return maxVersion + 1;
 }
 
 /** Build the versioned storage file name for a generation. */
@@ -58,6 +108,78 @@ export function documentFileName(
   version: number,
 ): string {
   return `${userId}-${jobId}-v${version}${EXT[type]}`;
+}
+
+/**
+ * Backfill a `document_versions` v1 row for a LEGACY artifact — a resume /
+ * cover letter generated BEFORE the version feature, stored as the
+ * un-versioned `<base><ext>` file with no row.
+ *
+ * Called when a fine-tune creates v2+ but no v1 row exists. This ensures the
+ * ORIGINAL is permanently preserved as v1 in the version nav (the legacy file
+ * stays untouched; the new v2 is the fine-tuned one). Returns true when a
+ * legacy file was found + backfilled.
+ */
+export async function backfillLegacyVersion(params: {
+  userId: string;
+  jobId: string;
+  type: DocType;
+}): Promise<boolean> {
+  const { userId, jobId, type } = params;
+  const sb = getSupabase();
+  const baseName = `${userId}-${jobId}`;
+  const legacyFileName = `${baseName}${EXT[type]}`;
+
+  try {
+    // Is there already a v1 row? (either versioned v1 or backfilled)
+    const { data: v1 } = await sb
+      .from("document_versions")
+      .select("version")
+      .eq("user_id", userId)
+      .eq("job_id", jobId)
+      .eq("doc_type", type)
+      .eq("version", 1)
+      .maybeSingle();
+    if (v1) return false;
+
+    // Does the legacy un-versioned file exist in storage?
+    const { data: files } = await sb.storage
+      .from(BUCKETS[type])
+      .list("", { search: baseName });
+    const legacyExists = (files ?? []).some((f) => f.name === legacyFileName);
+    if (!legacyExists) return false;
+
+    // Insert a v1 row pointing at the legacy file (public URL if available).
+    const { data: pub } = sb.storage
+      .from(BUCKETS[type])
+      .getPublicUrl(legacyFileName);
+    const { error } = await sb.from("document_versions").upsert(
+      {
+        user_id: userId,
+        job_id: jobId,
+        doc_type: type,
+        version: 1,
+        status: "completed",
+        url: pub.publicUrl,
+        file_name: legacyFileName,
+        completed_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,job_id,doc_type,version", ignoreDuplicates: true },
+    );
+    if (error) {
+      console.warn(
+        `backfillLegacyVersion: upsert failed: ${error.message}`,
+      );
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn(
+      `backfillLegacyVersion failed: ${e instanceof Error ? e.message : e}`,
+    );
+    return false;
+  }
 }
 
 /**
@@ -95,7 +217,9 @@ export async function markDocumentVersionBuilding(params: {
     },
   );
   if (error) {
-    throw new Error(`Failed to mark version ${version} building: ${error.message}`);
+    throw new Error(
+      `Failed to mark version ${version} building: ${error.message}`,
+    );
   }
 }
 

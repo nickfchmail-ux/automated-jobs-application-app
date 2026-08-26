@@ -48,7 +48,8 @@ export async function storeCoverLetterVersion(params: {
   const baseName = `${userId}-${jobId}`;
 
   return withRetry(async () => {
-    // Next version number by listing existing files for this job.
+    // Next version number by listing existing files for this job. The LEGACY
+    // un-versioned file (`<base>.txt`) counts as v1.
     let version = requestedVersion ?? 1;
     if (!requestedVersion) {
       try {
@@ -56,15 +57,15 @@ export async function storeCoverLetterVersion(params: {
           .from(COVER_LETTER_BUCKET)
           .list("", { search: baseName });
         if (!listErr && files) {
-          const existing = files
-            .map((f) => f.name)
-            .filter((n) => n.startsWith(`${baseName}-v`))
-            .map((n) => {
-              const m = n.match(/-v(\d+)\.txt$/i);
-              return m ? parseInt(m[1], 10) : 0;
-            })
-            .filter((n) => !Number.isNaN(n));
-          if (existing.length) version = Math.max(...existing) + 1;
+          let maxV = 0;
+          for (const f of files) {
+            if (f.name === `${baseName}.txt`) maxV = Math.max(maxV, 1);
+            else if (f.name.startsWith(`${baseName}-v`)) {
+              const m = f.name.match(/-v(\d+)\.txt$/i);
+              if (m) maxV = Math.max(maxV, parseInt(m[1], 10));
+            }
+          }
+          if (maxV) version = maxV + 1;
         }
       } catch {
         /* fall through — start at v1 */

@@ -168,9 +168,7 @@ export default function JobStateProvider({
             setState((prev) => {
               const existing = prev.documentVersions ?? [];
               const idx = existing.findIndex(
-                (v) =>
-                  v.doc_type === row.doc_type &&
-                  v.version === row.version,
+                (v) => v.doc_type === row.doc_type && v.version === row.version,
               );
               if (payload.eventType === "DELETE") {
                 if (idx === -1) return prev;

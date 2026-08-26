@@ -57,7 +57,8 @@ export async function storeGeneratedResume(params: {
     // Determine the NEXT version number by listing existing files for this
     // job (e.g. <base>-v1.html, <base>-v2.html, …). Each generation is kept
     // as its own version so the user can flip between the original and the
-    // fine-tuned resume (carousel/version nav in the overlay).
+    // fine-tuned resume (carousel/version nav in the overlay). The LEGACY
+    // un-versioned file (`<base>.html`) counts as v1.
     let version = requestedVersion ?? 1;
     if (!requestedVersion) {
       try {
@@ -65,15 +66,15 @@ export async function storeGeneratedResume(params: {
           .from(GENERATED_BUCKET)
           .list("", { search: baseName });
         if (!listErr && files) {
-          const existing = files
-            .map((f) => f.name)
-            .filter((n) => n.startsWith(`${baseName}-v`))
-            .map((n) => {
-              const m = n.match(/-v(\d+)\.html$/i);
-              return m ? parseInt(m[1], 10) : 0;
-            })
-            .filter((n) => !Number.isNaN(n));
-          if (existing.length) version = Math.max(...existing) + 1;
+          let maxV = 0;
+          for (const f of files) {
+            if (f.name === `${baseName}.html`) maxV = Math.max(maxV, 1);
+            else if (f.name.startsWith(`${baseName}-v`)) {
+              const m = f.name.match(/-v(\d+)\.html$/i);
+              if (m) maxV = Math.max(maxV, parseInt(m[1], 10));
+            }
+          }
+          if (maxV) version = maxV + 1;
         }
       } catch {
         /* fall through — start at v1 */

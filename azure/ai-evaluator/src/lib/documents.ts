@@ -25,7 +25,7 @@ import type {
 import { generateCoverLetterWithLLM, generateResumeWithLLM } from "./ai.js";
 import { storeCoverLetterVersion } from "./coverLetterDocuments.js";
 import {
-  fetchDocumentVersionContent,
+  backfillLegacyVersion,
   fetchLatestDocumentVersionContent,
   markDocumentVersionBuilding,
   markDocumentVersionCompleted,
@@ -131,6 +131,14 @@ export async function generateTailoredResume(
   // still generate (the artifact just won't be version-tracked).
   try {
     version = version ?? (await nextDocumentVersion(userId, jobId, "resume"));
+    // A fine-tune (v2+) on a LEGACY job must preserve the original as v1.
+    if (version > 1) {
+      await backfillLegacyVersion({
+        userId,
+        jobId,
+        type: "resume",
+      }).catch(() => undefined);
+    }
     await markDocumentVersionBuilding({
       userId,
       jobId,
@@ -244,6 +252,14 @@ export async function generateCoverLetterForJob(
   try {
     version =
       version ?? (await nextDocumentVersion(userId, jobId, "cover-letter"));
+    // A fine-tune (v2+) on a LEGACY job must preserve the original as v1.
+    if (version > 1) {
+      await backfillLegacyVersion({
+        userId,
+        jobId,
+        type: "cover-letter",
+      }).catch(() => undefined);
+    }
     await markDocumentVersionBuilding({
       userId,
       jobId,

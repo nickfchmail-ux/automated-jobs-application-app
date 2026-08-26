@@ -4,8 +4,8 @@ import {
   triggerCoverLetterAction,
   triggerResumeAction,
 } from "@/app/actions/documents";
-import { useJobState } from "@/components/JobStateProvider";
 import DotLoader from "@/components/DotLoader";
+import { useJobState } from "@/components/JobStateProvider";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -61,24 +61,81 @@ export default function DocumentPreviewOverlay({
   onClose: () => void;
 }) {
   const { documentVersions } = useJobState();
-  // The doc type's versions, sorted ascending (v1, v2, …).
-  const versions = useMemo<NavVersion[]>(
-    () =>
-      (documentVersions ?? [])
-        .filter((v) => v.doc_type === type)
-        .sort((a, b) => a.version - b.version)
-        .map((v) => ({
-          id: v.id,
-          version: v.version,
-          label: `v${v.version}`,
-          status: v.status,
-          url: v.url,
-          refinement: v.refinement,
-          basedOn: v.based_on,
-          error: v.error,
-        })),
-    [documentVersions, type],
-  );
+  // Versions fetched from the versions API on open — includes the LEGACY v1
+  // (un-versioned resume/letter) that has no `document_versions` row yet.
+  const [apiVersions, setApiVersions] = useState<NavVersion[]>([]);
+
+  // Fetch the versions list from the API on open (merges legacy v1 + rows).
+  // Realtime (`documentVersions`) keeps it live afterward; this seeds the
+  // legacy v1 that has no row.
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setApiVersions([]);
+    const listUrl =
+      type === "resume"
+        ? `/api/resume/${jobId}/versions`
+        : `/api/jobs/${jobId}/cover-letter/versions`;
+    async function load() {
+      try {
+        const res = await fetch(listUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const d = await res.json();
+        if (!alive) return;
+        const list: NavVersion[] = Array.isArray(d?.versions)
+          ? d.versions.map((v: Record<string, unknown>) => ({
+              id: String(v.id),
+              version: Number(v.version),
+              label: String(v.label ?? `v${v.version}`),
+              status: (v.status as NavVersion["status"]) ?? "completed",
+              url: (v.url as string | null) ?? null,
+              refinement: (v.refinement as string | null) ?? null,
+              basedOn: (v.based_on as number | null) ?? null,
+              error: (v.error as string | null) ?? null,
+            }))
+          : [];
+        if (alive) setApiVersions(list);
+      } catch {
+        // Transient — keep whatever we have.
+      }
+    }
+    void load();
+    // Refresh periodically so a fine-tune that completes while the overlay
+    // is open still appears even if the Realtime event is missed.
+    const interval = setInterval(load, 4000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [open, jobId, type]);
+
+  // Merge: Realtime-fed rows win for versioned entries; the API list supplies
+  // the legacy v1 (no row) and any entries Realtime hasn't delivered yet.
+  const versions = useMemo<NavVersion[]>(() => {
+    const live = (documentVersions ?? [])
+      .filter((v) => v.doc_type === type)
+      .sort((a, b) => a.version - b.version)
+      .map((v) => ({
+        id: v.id,
+        version: v.version,
+        label: `v${v.version}`,
+        status: v.status,
+        url: v.url,
+        refinement: v.refinement,
+        basedOn: v.based_on,
+        error: v.error,
+      }));
+    // Merge API versions not yet present in live (e.g. legacy v1), and
+    // overlay live status onto matching API entries.
+    const merged = [...live];
+    for (const av of apiVersions) {
+      const i = merged.findIndex(
+        (m) => m.version === av.version && m.id !== "legacy",
+      );
+      if (i === -1) merged.push(av);
+    }
+    return merged.sort((a, b) => a.version - b.version);
+  }, [documentVersions, type, apiVersions]);
 
   const [activeIdx, setActiveIdx] = useState(0);
   const [content, setContent] = useState<string | null>(null);

@@ -1,7 +1,7 @@
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { NextRequest, NextResponse } from "next/server";
 import type { DocumentVersion } from "@/types/api";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * GET /api/jobs/[jobId]/cover-letter/versions
@@ -37,15 +37,14 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let versions = (rows as DocumentVersion[] | null)?.length
+  const versions = (rows as DocumentVersion[] | null)?.length
     ? ((rows as DocumentVersion[])
         .filter((r) => r.version >= 1)
         .map((r) => ({
           id: r.id,
           version: r.version,
           label: `v${r.version}`,
-          url:
-            r.url ?? `/api/jobs/${jobId}/cover-letter/versions/${r.version}`,
+          url: r.url ?? `/api/jobs/${jobId}/cover-letter/versions/${r.version}`,
           status: r.status,
           refinement: r.refinement,
           basedOn: r.based_on,
@@ -53,8 +52,12 @@ export async function GET(
         })) ?? [])
     : [];
 
-  // No versioned rows yet — fall back to the latest inline letter (legacy).
-  if (versions.length === 0) {
+  // Merge the LEGACY inline letter (v1 original) if it exists AND a
+  // document_versions row for v1 doesn't already. Keeps legacy jobs (letter
+  // generated before the version feature) showing BOTH the original v1 and
+  // any fine-tuned v2+ side by side.
+  const hasV1 = versions.some((v) => v.version === 1);
+  if (!hasV1) {
     const { data: job, error: jErr } = await supabase
       .from("jobs")
       .select("cover_letter")
@@ -62,18 +65,16 @@ export async function GET(
       .eq("user_id", userId)
       .maybeSingle();
     if (!jErr && job?.cover_letter) {
-      versions = [
-        {
-          id: "legacy",
-          version: 1,
-          label: "v1",
-          url: `/api/jobs/${jobId}/cover-letter/content`,
-          status: "completed",
-          refinement: null,
-          basedOn: null,
-          error: null,
-        },
-      ];
+      versions.unshift({
+        id: "legacy",
+        version: 1,
+        label: "v1",
+        url: `/api/jobs/${jobId}/cover-letter/content`,
+        status: "completed",
+        refinement: null,
+        basedOn: null,
+        error: null,
+      });
     }
   }
 
