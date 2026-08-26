@@ -180,11 +180,19 @@ export default function DocumentPreviewOverlay({
         : await triggerCoverLetterAction(jobId, note, basedOn);
     setRequesting(false);
     if (!res.ok) {
-      setFineTuneError(
-        /resume/i.test(res.error)
-          ? "Upload a resume first, then try again."
-          : "Couldn't start the regeneration. Please try again in a moment.",
-      );
+      if (res.error.startsWith("LIMIT_REACHED:")) {
+        // Free-tier fine-tune quota exhausted → point to upgrade.
+        setFineTuneError(
+          `${res.error.replace(/^LIMIT_REACHED:\s*/, "")} ` +
+            "You can upgrade on your Profile page.",
+        );
+      } else {
+        setFineTuneError(
+          /resume/i.test(res.error)
+            ? "Upload a resume first, then try again."
+            : "Couldn't start the regeneration. Please try again in a moment.",
+        );
+      }
       return;
     }
     // Keep the fine-tune panel open — it now shows "Regenerating…" and flips

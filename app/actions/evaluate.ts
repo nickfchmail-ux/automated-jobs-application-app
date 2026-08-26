@@ -1,5 +1,6 @@
 "use server";
 
+import { consumeEntitlement } from "@/lib/entitlements";
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type {
@@ -46,6 +47,19 @@ export async function startEvaluationAction(
 ): Promise<StartEvaluationResult> {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
+
+  // ── Entitlement gate ────────────────────────────────────────
+  // Free users get ONE evaluation per search key (lifetime). The evaluation
+  // consumes quota for the search key being matched.
+  const entitlement = await consumeEntitlement("evaluation", {
+    searchKey: opts?.searchKey ?? undefined,
+  });
+  if (!entitlement.ok) {
+    if (entitlement.reason === "limit_reached") {
+      return { ok: false, error: `LIMIT_REACHED: ${entitlement.message}` };
+    }
+    return { ok: false, error: entitlement.message };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);

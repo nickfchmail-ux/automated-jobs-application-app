@@ -1,6 +1,7 @@
 "use client";
 import { logoutAction } from "@/app/actions/auth";
 import type { RootState } from "@/state/global/store";
+import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -25,7 +26,7 @@ type NavItem = {
 };
 
 const LINK_CLASS = {
-  base: "flex items-center gap-3 w-full text-sm font-medium px-3 py-2 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+  base: "relative flex items-center gap-3 w-full text-sm font-medium px-3 py-2 rounded-xl transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
   idle: "text-[var(--ink-soft)] hover:bg-[var(--paper-soft)] hover:text-[var(--ink)]",
   active:
     "bg-[var(--accent-soft)] text-[var(--accent-ink)] border border-[var(--line)]",
@@ -136,35 +137,53 @@ export default function Navbar() {
 
   function renderNavItem(item: NavItem, isActive: boolean) {
     return (
-      <button
+      <motion.button
         key={item.label}
         onClick={() => go(item.href)}
         aria-current={isActive ? "page" : undefined}
-        className={`${LINK_CLASS.base} ${
-          isActive ? LINK_CLASS.active : LINK_CLASS.idle
-        }`}
+        whileHover={{ x: 2 }}
+        whileTap={{ scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className={`${LINK_CLASS.base} ${isActive ? LINK_CLASS.active : LINK_CLASS.idle}`}
       >
         <span className="w-5 h-5 flex items-center justify-center shrink-0">
           {item.icon(isActive)}
         </span>
         <span className="flex-1 text-left">{item.label}</span>
         {typeof item.badge === "number" && item.badge > 0 && (
-          <span className="tabular-nums font-data text-xs font-semibold px-1.5 py-0.5 rounded-full bg-[var(--paper-soft)] text-[var(--ink-soft)]">
+          <motion.span
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 24 }}
+            className="tabular-nums font-data text-xs font-semibold px-1.5 py-0.5 rounded-full bg-[var(--paper-soft)] text-[var(--ink-soft)]"
+          >
             {item.badge}
-          </span>
+          </motion.span>
         )}
-      </button>
+        {isActive && (
+          <motion.span
+            layoutId="nav-active-dot"
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full bg-[var(--accent)]"
+            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+          />
+        )}
+      </motion.button>
     );
   }
 
   function renderGroup(label: string, items: NavItem[]) {
     return (
-      <div className="space-y-1">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="space-y-1"
+      >
         <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">
           {label}
         </p>
         {items.map((item) => renderNavItem(item, isActive(item.href)))}
-      </div>
+      </motion.div>
     );
   }
 
@@ -228,9 +247,14 @@ export default function Navbar() {
   return (
     <>
       {/* Desktop rail */}
-      <aside className="hidden lg:block fixed inset-y-0 left-0 w-64 z-20">
+      <motion.aside
+        initial={{ x: -24, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        className="hidden lg:block fixed inset-y-0 left-0 w-64 z-20"
+      >
         {shell}
-      </aside>
+      </motion.aside>
 
       {/* Mobile top bar */}
       <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)]">

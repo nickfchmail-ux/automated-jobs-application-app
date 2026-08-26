@@ -1,6 +1,7 @@
 "use client";
 
 import { useJobState } from "@/components/JobStateProvider";
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
 
 /**
@@ -83,7 +84,10 @@ export default function JobFitCard({
   const reasons = isFit ? parsedFitReasons : parsedNotFitReasons;
 
   return (
-    <section
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={`rounded-2xl border p-6 ${
         isFit
           ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50"
@@ -129,7 +133,7 @@ export default function JobFitCard({
             : "This role isn't a strong match for your current profile."}
         </p>
       )}
-    </section>
+    </motion.section>
   );
 }
 

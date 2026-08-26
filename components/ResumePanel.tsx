@@ -1,6 +1,7 @@
 "use client";
 
 import { uploadResumeAction } from "@/app/actions/resume";
+import { useToast } from "@/components/Toast";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
@@ -12,6 +13,7 @@ type Props = {
 
 export default function ResumePanel({ userId, fileName, signedUrl }: Props) {
   const router = useRouter();
+  const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -48,10 +50,17 @@ export default function ResumePanel({ userId, fileName, signedUrl }: Props) {
       const result = await uploadResumeAction(fd);
       if (!result.ok) {
         setError(result.error);
+        toast.error("Upload failed", result.error);
       } else {
         setSuccess(true);
         setSelectedFile(null);
         if (fileRef.current) fileRef.current.value = "";
+        toast.success(
+          hasResume ? "Resume replaced" : "Resume uploaded",
+          hasResume
+            ? "Your new resume is now what the AI scores jobs against."
+            : "You're ready to start matching jobs.",
+        );
         router.refresh();
       }
     });

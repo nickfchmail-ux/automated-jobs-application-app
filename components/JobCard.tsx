@@ -1,5 +1,6 @@
 import { formatDate } from "@/lib/dateUtils";
 import type { ResumeStatus } from "@/types/api";
+import { motion } from "motion/react";
 import Link from "next/link";
 import ResumeStatusBadge from "./ResumeStatusBadge";
 
@@ -142,7 +143,15 @@ export default function JobCard({ job }: { job: Job }) {
   const source = detectSource(job.url);
 
   return (
-    <div className="relative card card-hover flex flex-col h-130 cursor-pointer group">
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -3 }}
+      className="relative card card-hover flex flex-col h-130 cursor-pointer group"
+    >
       {/* Stretched link — entire card navigates to detail page */}
       <Link
         href={`/jobs/${job.id}`}
@@ -349,6 +358,6 @@ export default function JobCard({ job }: { job: Job }) {
           </svg>
         </Link>
       </div>
-    </div>
+    </motion.div>
   );
 }

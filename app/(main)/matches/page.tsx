@@ -1,10 +1,11 @@
-import FitFilters from "@/components/FitFilters";
-import type { Job } from "@/components/JobCard";
+import PageHeader from "@/components/PageHeader";
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import MatchesViewFallback from "./_fallback";
+import MatchesView from "./_view";
 
 export const revalidate = 0;
 
@@ -19,6 +20,11 @@ export const metadata: Metadata = {
  * plus the reasons behind each score. Replaces the old separate /fit and
  * /not-fit pages with one coherent results surface.
  *
+ * The page SHELL (header + footer) renders immediately; only the
+ * data-dependent region (tab counts + job lists, fetched from Supabase) is
+ * wrapped in <Suspense> with a matching skeleton — so navigating here never
+ * blocks the whole route on the backend query.
+ *
  * `?view=notfit` deep-links to the not-fit tab (old /not-fit redirects here).
  */
 export default async function MatchesPage({
@@ -32,90 +38,18 @@ export default async function MatchesPage({
 
   const active = view === "notfit" ? "notfit" : "fit";
 
-  let fitJobs: Job[] = [];
-  let notFitJobs: Job[] = [];
-  try {
-    const [fit, notFit] = await Promise.all([
-      supabase
-        .from("jobs")
-        .select("*")
-        .eq("fit", true)
-        .eq("user_id", userId)
-        .or("interested_in.is.null,interested_in.eq.true"),
-      supabase
-        .from("jobs")
-        .select("*")
-        .eq("fit", false)
-        .eq("user_id", userId)
-        .or("interested_in.is.null,interested_in.eq.true"),
-    ]);
-    if (fit.error) console.error("[Matches] fit error:", fit.error);
-    if (notFit.error) console.error("[Matches] notFit error:", notFit.error);
-    fitJobs = (fit.data as Job[]) ?? [];
-    notFitJobs = (notFit.data as Job[]) ?? [];
-  } catch (e) {
-    console.error("[Matches] error:", e);
-  }
-
-  const tabs = [
-    { key: "fit", label: "Good fit", count: fitJobs.length, href: "/matches" },
-    {
-      key: "notfit",
-      label: "Not a fit",
-      count: notFitJobs.length,
-      href: "/matches?view=notfit",
-    },
-  ] as const;
-
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10 space-y-8">
-      <header>
-        <p className="eyebrow">Results</p>
-        <h1 className="mt-2 text-3xl font-display font-semibold tracking-tight text-[var(--ink)]">
-          Matches
-        </h1>
-        <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-xl">
-          Every job the AI has scored against your resume — the strong fits to
-          act on, and the near-misses worth understanding.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Results"
+        title="Matches"
+        subtitle="Every job the AI has scored against your resume — the strong fits to act on, and the near-misses worth understanding."
+      />
 
-      {/* Toggle */}
-      <div
-        role="tablist"
-        aria-label="Filter by fit"
-        className="inline-flex items-center gap-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-1"
-      >
-        {tabs.map((t) => (
-          <Link
-            key={t.key}
-            role="tab"
-            aria-selected={active === t.key}
-            href={t.href}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 ${
-              active === t.key
-                ? t.key === "fit"
-                  ? "bg-[var(--good)] text-white"
-                  : "bg-[var(--bad)] text-white"
-                : "text-[var(--ink-soft)] hover:text-[var(--ink)] hover:bg-[var(--paper-soft)]"
-            }`}
-          >
-            {t.label}
-            <span className="font-data text-xs tabular-nums opacity-80">
-              {t.count}
-            </span>
-          </Link>
-        ))}
-      </div>
-
-      {active === "fit" ? (
-        <FitFilters
-          jobs={fitJobs}
-          emptyMessage="No good-fit jobs yet — run a search and match it against your resume."
-        />
-      ) : (
-        <FitFilters jobs={notFitJobs} emptyMessage="No not-fit jobs yet." />
-      )}
+      {/* Data region — suspends on the Supabase queries, shell paints first */}
+      <Suspense fallback={<MatchesViewFallback />}>
+        <MatchesView userId={userId} active={active} />
+      </Suspense>
 
       <p className="text-sm text-[var(--ink-faint)]">
         Want the big picture?{" "}

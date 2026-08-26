@@ -1,5 +1,6 @@
 import FitFilters from "@/components/FitFilters";
 import type { Job } from "@/components/JobCard";
+import PageHeader from "@/components/PageHeader";
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type { Metadata } from "next";
@@ -41,16 +42,11 @@ export default async function ReviewPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-8 py-10 space-y-8">
-      <header>
-        <p className="eyebrow">Review</p>
-        <h1 className="mt-2 text-3xl font-display font-semibold tracking-tight text-[var(--ink)]">
-          To review
-        </h1>
-        <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-xl">
-          Jobs scraped but not yet scored. Run a match to get the AI&apos;s
-          verdict on each one.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Review"
+        title="To review"
+        subtitle="Jobs scraped but not yet scored. Run a match to get the AI's verdict on each one."
+      />
 
       <FitFilters
         jobs={jobs}

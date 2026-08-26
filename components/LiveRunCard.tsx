@@ -4,6 +4,7 @@ import { funnelProgress, runStatusCopy } from "@/lib/funnel";
 import { runReset } from "@/state/global/slice/runSlice";
 import type { RootState } from "@/state/global/store";
 import type { PipelineRunStatus } from "@/types/api";
+import { motion } from "motion/react";
 import { useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import RunStatusBadge from "./RunStatusBadge";
@@ -494,7 +495,12 @@ export default function LiveRunCard({
             `stats:boards` `stage` + live counters. Shows searching spinner,
             done ✓, blocked ⚠, or failed, plus the live found count. */}
         {boards.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+            className="flex flex-wrap items-center gap-2"
+          >
             {boards.map((b) => {
               const meta = BOARD_META[b] ?? { label: b, color: "bg-zinc-500" };
               const info = boardCounts.get(b);
@@ -525,8 +531,21 @@ export default function LiveRunCard({
                     : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400";
 
               return (
-                <span
+                <motion.span
                   key={b}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0.9, y: 6 },
+                    visible: {
+                      opacity: 1,
+                      scale: 1,
+                      y: 0,
+                      transition: {
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 24,
+                      },
+                    },
+                  }}
                   title={info?.lastError ?? undefined}
                   className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${chipTone}`}
                 >
@@ -590,15 +609,18 @@ export default function LiveRunCard({
                     </span>
                   )}
                   {label}
-                </span>
+                </motion.span>
               );
             })}
-          </div>
+          </motion.div>
         )}
 
         {/* Scrape done, not matched yet — a quiet pointer to the Match step */}
         {showMatchPrompt && (
-          <div
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
             className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-4 py-3"
             role="status"
             aria-live="polite"
@@ -614,7 +636,7 @@ export default function LiveRunCard({
             >
               Match jobs →
             </a>
-          </div>
+          </motion.div>
         )}
 
         {/* Progress bar */}
@@ -627,9 +649,10 @@ export default function LiveRunCard({
             className="w-full h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden"
             aria-hidden="true"
           >
-            <div
-              className="h-full rounded-full bg-blue-500 transition-all duration-500 motion-reduce:transition-none"
-              style={{ width: `${progress}%` }}
+            <motion.div
+              className="h-full rounded-full bg-blue-500"
+              animate={{ width: `${progress}%` }}
+              transition={{ type: "spring", stiffness: 120, damping: 24 }}
             />
           </div>
         )}

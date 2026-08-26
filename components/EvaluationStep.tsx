@@ -349,7 +349,12 @@ export default function EvaluationStep() {
         // at "evaluating" and the user would be stuck on the progress view
         // with an error, forced to reload to retry.
         dispatch(evaluationStatusUpdated("none"));
-        if (/resume/i.test(result.error)) {
+        if (result.error.startsWith("LIMIT_REACHED:")) {
+          // Free-tier evaluation quota exhausted → point to upgrade.
+          setEvalError(
+            `${result.error.replace(/^LIMIT_REACHED:\s*/, "")} You can upgrade on your Profile page.`,
+          );
+        } else if (/resume/i.test(result.error)) {
           setEvalError(
             "You need to upload your resume before we can match jobs to it.",
           );

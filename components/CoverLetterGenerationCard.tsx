@@ -7,6 +7,7 @@ import {
 import DocumentPreviewOverlay from "@/components/DocumentPreviewOverlay";
 import DotLoader from "@/components/DotLoader";
 import { useJobState } from "@/components/JobStateProvider";
+import { useToast } from "@/components/Toast";
 import { coverLetterStatusCopy } from "@/lib/funnel";
 import { useEffect, useState } from "react";
 
@@ -42,6 +43,7 @@ export default function CoverLetterGenerationCard({
 }) {
   // Shared live state (single socket + Realtime channel via JobStateProvider).
   const { coverLetterStatus, error: realtimeError } = useJobState();
+  const toast = useToast();
   const [requesting, setRequesting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Optimistic local override: show "Writing…" immediately after triggering
@@ -68,15 +70,24 @@ export default function CoverLetterGenerationCard({
     const res = await triggerCoverLetterAction(jobId);
     setRequesting(false);
     if (!res.ok) {
-      setActionError(
-        /resume/i.test(res.error)
+      let msg: string;
+      if (res.error.startsWith("LIMIT_REACHED:")) {
+        msg = `${res.error.replace(/^LIMIT_REACHED:\s*/, "")} Upgrade on your Profile page for more.`;
+      } else {
+        msg = /resume/i.test(res.error)
           ? "Upload a resume first, then try again."
-          : "Couldn't start your cover letter. Please try again in a moment.",
-      );
+          : "Couldn't start your cover letter. Please try again in a moment.";
+      }
+      setActionError(msg);
+      toast.error("Couldn't start", msg);
       return;
     }
     // Success → optimistically show "Writing your cover letter…" now.
     setOptimisticBuilding(true);
+    toast.info(
+      "Writing your cover letter",
+      "Usually takes under a minute. You can leave this page.",
+    );
   }
 
   // Guaranteed fallback while a cover letter is building: poll the document

@@ -2,6 +2,7 @@
 
 import { statsRunsAction } from "@/app/actions/scrape";
 import type { FunnelCounts, RunSummary } from "@/types/api";
+import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 
 const BOARD_LABELS: Record<string, string> = {
@@ -159,7 +160,12 @@ export default function RunHistory() {
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden"
+    >
       <div className="px-5 py-3 border-b border-zinc-100 dark:border-zinc-800">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
           My searches
@@ -172,8 +178,11 @@ export default function RunHistory() {
           const saved = run.counts.unique || 0;
           const fits = run.counts.fit || 0;
           return (
-            <li
+            <motion.li
               key={run.runId}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
               className="px-5 py-3 flex items-center justify-between gap-3"
             >
               <div className="min-w-0">
@@ -283,10 +292,10 @@ export default function RunHistory() {
                   )}
                 </span>
               </div>
-            </li>
+            </motion.li>
           );
         })}
       </ul>
-    </div>
+    </motion.div>
   );
 }

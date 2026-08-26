@@ -276,11 +276,16 @@ export async function getInsights(userId: string): Promise<Insights> {
   const gaps = topTokens(gapTokens, Math.max(1, notFit.length));
 
   // Trend: group evaluated jobs by run, oldest → newest, avg score.
-  const byRun = new Map<string, { label: string; scores: number[] }>();
+  // Each point is labeled with the run's SEARCH KEY (what the user searched)
+  // so the trend bars are meaningful — e.g. "web developer", "frontend".
+  const byRun = new Map<
+    string,
+    { searchKey: string | null; scores: number[] }
+  >();
   for (const j of evaluated) {
     const runId = String(j.pipeline_run_id ?? "other");
     const entry = byRun.get(runId) ?? {
-      label: runId === "other" ? "Earlier" : "",
+      searchKey: j.search_key ?? null,
       scores: [],
     };
     if (Number.isFinite(Number(j.fit_score)))
@@ -288,13 +293,22 @@ export async function getInsights(userId: string): Promise<Insights> {
     byRun.set(runId, entry);
   }
   const runOrder = [...byRun.entries()];
-  const trend: TrendPoint[] = runOrder.slice(0, 8).map(([runId, e], i) => ({
-    label: runId === "other" ? "Earlier" : `Run ${i + 1}`,
-    avgScore: Math.round(
-      e.scores.reduce((a, b) => a + b, 0) / Math.max(1, e.scores.length),
-    ),
-    count: e.scores.length,
-  }));
+  const trend: TrendPoint[] = runOrder.slice(0, 8).map(([runId, e], i) => {
+    // Human-readable search key: "web_developer" → "Web developer".
+    const searchKey = e.searchKey?.trim()
+      ? e.searchKey
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+      : "";
+    return {
+      label:
+        searchKey || (runId === "other" ? "Earlier" : `Run ${i + 1}`),
+      avgScore: Math.round(
+        e.scores.reduce((a, b) => a + b, 0) / Math.max(1, e.scores.length),
+      ),
+      count: e.scores.length,
+    };
+  });
 
   // Board mix.
   const byBoardMap = new Map<string, { evaluated: number; matches: number }>();

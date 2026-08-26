@@ -1,6 +1,10 @@
 import { getResumeInfo } from "@/app/actions/resume";
 
+import PageHeader from "@/components/PageHeader";
 import ResumePanel from "@/components/ResumePanel";
+import SubscriptionPanel from "@/components/SubscriptionPanel";
+import { getUserEmail } from "@/lib/auth";
+import { getEntitlements } from "@/lib/entitlements";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
@@ -17,17 +21,20 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
+  const email = await getUserEmail();
+  const entitlements = await getEntitlements(email);
+
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-8 py-10 space-y-8">
-      <header>
-        <p className="eyebrow">Account</p>
-        <h1 className="mt-2 text-3xl font-display font-semibold tracking-tight text-[var(--ink)]">
-          Profile
-        </h1>
-        <p className="mt-2 text-sm text-[var(--ink-soft)]">
-          Manage your resume — the source the AI scores every job against.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Account"
+        title="Profile"
+        subtitle="Manage your resume — the source the AI scores every job against."
+      />
+
+      {entitlements && (
+        <SubscriptionPanel entitlements={entitlements} />
+      )}
 
       <ResumePanel
         userId={result.userId}

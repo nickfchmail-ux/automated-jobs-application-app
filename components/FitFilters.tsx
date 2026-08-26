@@ -2,6 +2,7 @@
 
 import JobCard, { Job } from "@/components/JobCard";
 import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
+import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -39,9 +40,10 @@ function FilterBar({
       <span className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider shrink-0">
         {label}
       </span>
-      <button
+      <motion.button
         onClick={() => onChange("All")}
         aria-pressed={active === "All"}
+        whileTap={{ scale: 0.95 }}
         className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
           active === "All"
             ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 border-transparent"
@@ -49,15 +51,16 @@ function FilterBar({
         }`}
       >
         All
-      </button>
+      </motion.button>
       {options.map((opt) => {
         const isActive = active === opt;
         const custom = colorMap?.[opt];
         return (
-          <button
+          <motion.button
             key={opt}
             onClick={() => onChange(opt)}
             aria-pressed={isActive}
+            whileTap={{ scale: 0.95 }}
             className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
               isActive
                 ? custom
@@ -67,7 +70,7 @@ function FilterBar({
             }`}
           >
             {opt}
-          </button>
+          </motion.button>
         );
       })}
     </div>
@@ -282,11 +285,13 @@ export default function FitFilters({
           <p className="text-sm mt-1">Try selecting a different combination.</p>
         </div>
       ) : viewMode === "card" ? (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((job) => (
-            <JobCard key={job.id} job={job} />
-          ))}
-        </div>
+        <motion.div layout className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <AnimatePresence mode="popLayout">
+            {filtered.map((job) => (
+              <JobCard key={job.id} job={job} />
+            ))}
+          </AnimatePresence>
+        </motion.div>
       ) : (
         <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-x-auto shadow-sm">
           <table className="w-full text-sm min-w-[640px]">

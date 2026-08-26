@@ -7,6 +7,7 @@ import {
 import DocumentPreviewOverlay from "@/components/DocumentPreviewOverlay";
 import DotLoader from "@/components/DotLoader";
 import { useJobState } from "@/components/JobStateProvider";
+import { useToast } from "@/components/Toast";
 import { resumeStatusCopy } from "@/lib/funnel";
 import { useEffect, useState } from "react";
 
@@ -47,6 +48,7 @@ export default function ResumeGenerationCard({
 }) {
   // Shared live state (single socket + Realtime channel via JobStateProvider).
   const { resumeStatus, resumeUrl, error: realtimeError } = useJobState();
+  const toast = useToast();
   const [requesting, setRequesting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Optimistic local override: while the Azure function enqueues + the worker
@@ -101,16 +103,25 @@ export default function ResumeGenerationCard({
     const res = await triggerResumeAction(jobId);
     setRequesting(false);
     if (!res.ok) {
-      setActionError(
-        /resume/i.test(res.error)
+      let msg: string;
+      if (res.error.startsWith("LIMIT_REACHED:")) {
+        msg = `${res.error.replace(/^LIMIT_REACHED:\s*/, "")} Upgrade on your Profile page for more.`;
+      } else {
+        msg = /resume/i.test(res.error)
           ? "Upload a resume first, then try again."
-          : "Couldn't start your resume. Please try again in a moment.",
-      );
+          : "Couldn't start your resume. Please try again in a moment.";
+      }
+      setActionError(msg);
+      toast.error("Couldn't start", msg);
       return;
     }
     // Success → optimistically show "Generating…" now. Realtime/socket will
     // confirm `building` → `completed` (or `failed`) and clear this flag.
     setOptimisticBuilding(true);
+    toast.info(
+      "Tailoring your resume",
+      "This usually takes about a minute. You can keep browsing — we'll update you here.",
+    );
   }
 
   return (

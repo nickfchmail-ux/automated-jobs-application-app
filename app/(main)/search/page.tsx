@@ -1,5 +1,6 @@
 import ScrapePanelWithResume from "@/app/(main)/_resume";
 import EvaluationStep from "@/components/EvaluationStep";
+import PageHeader from "@/components/PageHeader";
 import RunHistory from "@/components/RunHistory";
 import { getUserId } from "@/lib/auth";
 import type { Metadata } from "next";
@@ -27,17 +28,11 @@ export default async function SearchPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-8 py-10 space-y-8">
-      <header>
-        <p className="eyebrow">Search &amp; match</p>
-        <h1 className="mt-2 text-3xl font-display font-semibold tracking-tight text-[var(--ink)]">
-          Find jobs worth applying to
-        </h1>
-        <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-xl">
-          Run a search across job boards, then let the AI score every listing
-          against your resume — with a cover letter and tailored resume for the
-          strong fits.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Search &amp; match"
+        title="Find jobs worth applying to"
+        subtitle="Run a search across job boards, then let the AI score every listing against your resume — with a cover letter and tailored resume for the strong fits."
+      />
 
       {/* Step 1 — Search (scrape) */}
       <section className="card overflow-hidden">

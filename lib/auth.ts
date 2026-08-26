@@ -18,3 +18,15 @@ export async function getUserId(): Promise<string | null> {
     return null;
   }
 }
+
+/** Decode the user's email from the JWT (used to bootstrap admin role). */
+export async function getUserEmail(): Promise<string | null> {
+  const token = await getToken();
+  if (!token) return null;
+  try {
+    const payload = decodeJwt(token);
+    return (payload.email as string) ?? null;
+  } catch {
+    return null;
+  }
+}

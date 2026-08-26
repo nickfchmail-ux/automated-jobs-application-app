@@ -3,6 +3,7 @@
 import { evaluationBatchCopy } from "@/lib/funnel";
 import type { RootState } from "@/state/global/store";
 import type { EvaluationRunRow } from "@/types/api";
+import { AnimatePresence, motion } from "motion/react";
 import { useSelector } from "react-redux";
 
 /**
@@ -239,86 +240,92 @@ export default function EvaluationProgress({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {rows.map((run: EvaluationRunRow) => {
-              const copy = evaluationBatchCopy(run.status);
-              const fit = run.fit_jobs ?? 0;
-              const notFit = run.not_fit_jobs ?? 0;
-              const remaining =
-                run.remaining_jobs ??
-                Math.max(
-                  0,
-                  (run.total_jobs ?? 0) -
-                    (run.processed_jobs ?? 0) -
-                    (run.failed_jobs ?? 0),
-                );
-              return (
-                <tr
-                  key={run.id}
-                  className="job-enter"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <td className="px-5 py-2.5">
-                    <p className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[12rem]">
-                      &ldquo;{run.keyword}&rdquo;
-                    </p>
-                    {run.last_error && (
-                      <p className="text-[11px] text-red-600 dark:text-red-400">
-                        {run.last_error}
+            <AnimatePresence initial={false}>
+              {rows.map((run: EvaluationRunRow) => {
+                const copy = evaluationBatchCopy(run.status);
+                const fit = run.fit_jobs ?? 0;
+                const notFit = run.not_fit_jobs ?? 0;
+                const remaining =
+                  run.remaining_jobs ??
+                  Math.max(
+                    0,
+                    (run.total_jobs ?? 0) -
+                      (run.processed_jobs ?? 0) -
+                      (run.failed_jobs ?? 0),
+                  );
+                return (
+                  <motion.tr
+                    key={run.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <td className="px-5 py-2.5">
+                      <p className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[12rem]">
+                        &ldquo;{run.keyword}&rdquo;
                       </p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <span
-                      className={`inline-flex items-center gap-1 font-medium ${
-                        copy.tone === "success"
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : copy.tone === "error"
-                            ? "text-red-600 dark:text-red-400"
-                            : copy.tone === "active"
-                              ? "text-blue-600 dark:text-blue-400"
-                              : "text-zinc-500 dark:text-zinc-400"
-                      }`}
-                    >
-                      {copy.tone === "active" && (
-                        <svg
-                          className="w-3 h-3 animate-spin motion-reduce:hidden"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                          />
-                        </svg>
+                      {run.last_error && (
+                        <p className="text-[11px] text-red-600 dark:text-red-400">
+                          {run.last_error}
+                        </p>
                       )}
-                      {copy.label}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
-                    {fit}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400 font-semibold">
-                    {notFit}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
-                    {remaining}
-                  </td>
-                  <td className="px-5 py-2.5 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
-                    {run.total_jobs ?? 0}
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <span
+                        className={`inline-flex items-center gap-1 font-medium ${
+                          copy.tone === "success"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : copy.tone === "error"
+                              ? "text-red-600 dark:text-red-400"
+                              : copy.tone === "active"
+                                ? "text-blue-600 dark:text-blue-400"
+                                : "text-zinc-500 dark:text-zinc-400"
+                        }`}
+                      >
+                        {copy.tone === "active" && (
+                          <svg
+                            className="w-3 h-3 animate-spin motion-reduce:hidden"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                            />
+                          </svg>
+                        )}
+                        {copy.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {fit}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-rose-600 dark:text-rose-400 font-semibold">
+                      {notFit}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                      {remaining}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                      {run.total_jobs ?? 0}
+                    </td>
+                  </motion.tr>
+                );
+              })}
+            </AnimatePresence>
           </tbody>
         </table>
       </div>

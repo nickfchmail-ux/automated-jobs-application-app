@@ -1,6 +1,7 @@
 "use client";
 
 import { toggleAppliedAction } from "@/app/actions/jobs";
+import { useToast } from "@/components/Toast";
 import { formatDate } from "@/lib/dateUtils";
 import { useState, useTransition } from "react";
 
@@ -26,6 +27,7 @@ export default function AppliedToggle({
   const [applied, setApplied] = useState(initialApplied);
   const [localAppliedOn, setLocalAppliedOn] = useState(appliedOn);
   const [isPending, startTransition] = useTransition();
+  const toast = useToast();
 
   function handleToggle() {
     const next = !applied;
@@ -37,6 +39,12 @@ export default function AppliedToggle({
       if (!result.ok) {
         setApplied(!next); // revert on error
         setLocalAppliedOn(appliedOn);
+        toast.error("Couldn't update", "Please try again in a moment.");
+      } else {
+        toast.success(
+          next ? "Marked as applied" : "Marked as not applied",
+          next ? "Nice — keeping the momentum going." : undefined,
+        );
       }
     });
   }

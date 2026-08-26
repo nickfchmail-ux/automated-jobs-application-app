@@ -1,6 +1,7 @@
 "use client";
 
 import { signupAction } from "@/app/actions/auth";
+import { motion } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useActionState } from "react";
@@ -8,8 +9,13 @@ export default function SignupPage() {
   const [state, formAction, pending] = useActionState(signupAction, {});
 
   return (
-    <div className="min-h-screen bg-blue-950 dark:bg-zinc-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-[var(--paper)] dark:bg-zinc-950 flex items-center justify-center px-4">
+      <motion.div
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
         {/* Logo / Brand */}
         <div className="text-center mb-2">
           <div className="text-center mb-2 h-[250px]">
@@ -148,7 +154,7 @@ export default function SignupPage() {
             Sign in
           </Link>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { consumeEntitlement } from "@/lib/entitlements";
 import { getUserId } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import type {
@@ -92,6 +93,22 @@ async function triggerDocument(
 ): Promise<TriggerDocumentResult> {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
+
+  // ── Entitlement gate ────────────────────────────────────────
+  // Free users get ONE manual generation AND ONE fine-tune per document type
+  // (lifetime). The auto-generated documents (fit auto-build) happen on the
+  // backend and don't go through this action, so they're never charged.
+  // A fine-tune is a regeneration (refinement present) — it consumes the
+  // same per-type allowance as the initial manual generation, capped at 1.
+  const entitlement = await consumeEntitlement(
+    type === "resume" ? "fine_tune_resume" : "fine_tune_cover_letter",
+  );
+  if (!entitlement.ok) {
+    if (entitlement.reason === "limit_reached") {
+      return { ok: false, error: `LIMIT_REACHED: ${entitlement.message}` };
+    }
+    return { ok: false, error: entitlement.message };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);

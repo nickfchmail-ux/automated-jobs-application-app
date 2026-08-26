@@ -1,5 +1,6 @@
 "use server";
 
+import { consumeEntitlement } from "@/lib/entitlements";
 import { getToken, getUserId } from "@/lib/auth";
 import { fetchWithAuth } from "@/lib/fetchWithAuth";
 import { supabase } from "@/lib/supabase";
@@ -42,6 +43,18 @@ export async function startScrapeAction(
 ): Promise<StartScrapeResult> {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
+
+  // ── Entitlement gate ────────────────────────────────────────
+  // Free users get ONE search per keyword (lifetime). Pro/admin are unlimited.
+  const entitlement = await consumeEntitlement("search", {
+    searchKey: params.keyword,
+  });
+  if (!entitlement.ok) {
+    if (entitlement.reason === "limit_reached") {
+      return { ok: false, error: `LIMIT_REACHED: ${entitlement.message}` };
+    }
+    return { ok: false, error: entitlement.message };
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);

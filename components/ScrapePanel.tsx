@@ -2,6 +2,7 @@
 
 import { startScrapeAction } from "@/app/actions/scrape";
 import LiveRunCard from "@/components/LiveRunCard";
+import { useToast } from "@/components/Toast";
 import { useRealtimeRun } from "@/hooks/useRealtimeRun";
 import {
   runQueued,
@@ -22,6 +23,7 @@ const BOARD_OPTIONS: { value: string; label: string }[] = [
 
 export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
   const dispatch = useDispatch();
+  const toast = useToast();
   const { phase, jobStream } = useSelector((s: RootState) => s.run);
   const [keyword, setKeyword] = useState("");
   const [pages, setPages] = useState(1);
@@ -81,17 +83,21 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
 
       if (!result.ok) {
         // Friendly copy — no status codes, no jargon
-        if (/429|limit|quota/i.test(result.error)) {
-          setError("You've hit today's search limit. It resets at midnight.");
+        let friendly: string;
+        if (result.error.startsWith("LIMIT_REACHED:")) {
+          // Free-tier quota exhausted → point to the upgrade path.
+          friendly = result.error.replace(/^LIMIT_REACHED:\s*/, "");
+        } else if (/429|limit|quota/i.test(result.error)) {
+          friendly = "You've hit today's search limit. It resets at midnight.";
         } else if (/rate|too many|busy/i.test(result.error)) {
-          setError(
-            "The job boards are busy right now — we couldn't get through. Please try again in a moment.",
-          );
+          friendly =
+            "The job boards are busy right now — we couldn't get through. Please try again in a moment.";
         } else {
-          setError(
-            "Something went wrong. Your saved jobs are safe — please try again.",
-          );
+          friendly =
+            "Something went wrong. Your saved jobs are safe — please try again.";
         }
+        setError(friendly);
+        toast.error("Search didn't start", friendly);
         return;
       }
 
@@ -101,6 +107,10 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         boards: [...boards],
       });
       dispatch(runQueued({ runId: result.runId, keyword: keyword.trim() }));
+      toast.info(
+        "Search started",
+        `Looking for “${keyword.trim()}” across ${boards.length} board${boards.length === 1 ? "" : "s"} — we'll update you live.`,
+      );
     });
   }
 
