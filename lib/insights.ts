@@ -1,4 +1,4 @@
-import { requireServiceClient } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 /**
  * Deep job-search intelligence.
@@ -143,8 +143,18 @@ type RpcInsights = Partial<{
   strengths: { term: string; count: number; share: number }[];
   gaps: { term: string; count: number; share: number }[];
   trend: { label: string; avgScore: number; count: number }[];
-  byBoard: { board: string; evaluated: number; matches: number; fitRate: number }[];
-  byKeyword: { keyword: string; evaluated: number; matches: number; fitRate: number }[];
+  byBoard: {
+    board: string;
+    evaluated: number;
+    matches: number;
+    fitRate: number;
+  }[];
+  byKeyword: {
+    keyword: string;
+    evaluated: number;
+    matches: number;
+    fitRate: number;
+  }[];
   scoreBuckets: { great: number; possible: number; low: number; total: number };
   salary: {
     medianMonthly: number;
@@ -240,7 +250,6 @@ const EMPTY_INSIGHTS: Insights = {
 export async function getInsights(userId: string): Promise<Insights> {
   if (!userId) return EMPTY_INSIGHTS;
 
-  const supabase = requireServiceClient();
   const { data, error } = await supabase.rpc("get_user_insights", {
     p_user_id: userId,
   });
@@ -274,7 +283,11 @@ export async function getInsights(userId: string): Promise<Insights> {
       count: s.count,
       share: s.share,
     })),
-    gaps: (r.gaps ?? []).map((g) => ({ term: g.term, count: g.count, share: g.share })),
+    gaps: (r.gaps ?? []).map((g) => ({
+      term: g.term,
+      count: g.count,
+      share: g.share,
+    })),
     trend: (r.trend ?? []).map((p) => ({
       label: p.label,
       avgScore: p.avgScore,
