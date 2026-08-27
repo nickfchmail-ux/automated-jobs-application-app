@@ -51,3 +51,26 @@ description: "JobSeek Supabase data access patterns: server client vs browser cl
 - Location: `supabase/migrations/` (timestamped filenames).
 - Also referenced: `azure/ai-evaluator/migrations/` for evaluator-owned tables (e.g., `evaluation_runs`).
 - Keep RLS enabled; test policies against an anon/authenticated role.
+
+## ⚠️ Efficiency — Known Supabase Burners (load `supabase-efficiency` too)
+
+> The Principal Architect maintains a **verified list of resource-burn patterns**
+> in this repo at `.github/skills/supabase-efficiency/SKILL.md`. Load it whenever
+> you touch ANY query, action, API route, migration, or storage flow. The big ones
+> to never reintroduce:
+
+- **`select("*")` on list pages** → always project columns + paginate in the DB
+  (`.range()`, `.limit()`, `.order()`), never fetch-all-then-filter in JS
+  (`app/api/jobs/_shared.ts` currently does this — replace it).
+- **Missing composite indexes** on hot filter columns (`user_id, fit, interested_in`,
+  `user_id, applied`, `pipeline_run_id`) → add in NEW timestamped migrations, never
+  edit an applied one (checksum mismatch on `supabase db push`).
+- **Unfiltered Realtime channels** → push filters into the subscription (see
+  `realtime-architecture`), don't filter after delivery.
+- **N+1 loops** → batch with `.in()`.
+- **Storage churn** → skip re-upload when unchanged; avoid repeated bucket `list()`.
+- **New client per call** → never; the module-level singletons in `lib/supabase.ts`
+  and `lib/supabase-browser.ts` are correct — keep them.
+
+Always verify a fix with evidence (EXPLAIN shows an Index Scan, calls-per-mount drop
+in the Supabase dashboard, channel has a `filter:`).

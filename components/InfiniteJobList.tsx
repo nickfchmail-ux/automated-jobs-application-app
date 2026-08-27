@@ -362,7 +362,7 @@ export default function InfiniteJobList({
       {hasNextPage && !isFetchingNextPage && (
         <button
           onClick={() => fetchNextPage()}
-          className="mx-auto block text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          className="mx-auto block text-sm font-medium violet-600 dark:text-violet-400 hover:underline"
         >
           Load more
         </button>

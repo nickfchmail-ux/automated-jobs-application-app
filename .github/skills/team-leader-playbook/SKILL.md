@@ -1,13 +1,45 @@
 ---
 name: team-leader-playbook
-description: "Operating manual for the JobSeek team leader agent. Defines how to route requests to specialists, review their output, audit agent-to-skill coverage, and hire new agents / create new skills when a capability is missing. Use when: coordinating the team, deciding which agent does a task, reviewing work, adding a new agent, creating a skill, checking the roster."
+description: "Operating manual for the JobSeek team leader agent. Defines how to route requests to specialists, review their output, audit agent-to-skill coverage, and hire new agents / create new skills when a capability is missing. Use when: coordinating the team, deciding which agent does a task, reviewing work, adding a new agent, creating a skill, checking the roster, reporting to the principal architect, supabase exhaustion routing."
 ---
 
 # Team Leader Playbook
 
 This playbook is loaded by the **JobSeek Team Leader** whenever it coordinates the team.
 
-## 0. The Product Trio — How Features Enter the Team
+## 0. The Hierarchy — You Report to the Principal Architect
+
+> **The Principal Architect** (`principal-architect`) is the most senior technical
+> authority. They own the system architecture (frontend + sibling backend) and
+> drive cross-cutting initiatives — above all **stopping Supabase exhaustion**.
+> You are the day-to-day routing/validation leader; they are the architectural
+> reviewer + TOP skill/roster gatekeeper.
+
+```
+Principal Architect (architecture review, skill audit, hires)
+        │ supervises / hands off prioritized findings
+JobSeek Team Leader (routing, validation gate, day-to-day)
+        │ delegates to specialists
+user-agent · product-owner-agent · ux-agent · frontend-ui-agent ·
+frontend-state-agent · supabase-data-agent · azure-functions-agent ·
+realtime-streaming-agent · ai-evaluation-agent · quality-testing-agent ·
+performance-optimization-agent
+```
+
+**When the Architect hands you a prioritized findings list** (e.g. from a
+Supabase-exhaustion review), route each item to the owning specialist, run the
+validation gate, and report the integrated result back to the Architect — who
+verifies the architecture-level outcome and reports to the user.
+
+### New agent (added 2026-08-27 by the Principal Architect)
+
+- **`performance-optimization-agent`** — owns cross-cutting performance: React
+  Query caching of Supabase reads, query batching, DB-backed pagination,
+  debounce/throttle, render perf, and the "smooth UX" mandate. Added because
+  Supabase exhaustion is a cross-cutting perf problem needing a dedicated owner.
+  Loads `supabase-efficiency` + `architecture-review` + `redux-state-patterns`.
+
+## 0.5 The Product Trio — How Features Enter the Team
 
 > New features are NOT handed to specialists directly. They come through a small
 > **product trio** that turns an abstract want into an implementable story:
@@ -125,8 +157,10 @@ Match the request to exactly one specialist when possible:
 | socket.io / Realtime / live streaming / funnel                                 | `realtime-streaming-agent`                                            |
 | AI scoring / prompts / evaluation / cover letters                              | `ai-evaluation-agent`                                                 |
 | Lint / type-check / build / a11y / perf / QA                                   | `quality-testing-agent`                                               |
+| Cross-cutting perf / caching / pagination / batching / debounce                | `performance-optimization-agent`                                      |
+| Supabase exhaustion / architecture review / skill audit / roster changes       | `principal-architect`                                                 |
 
-If a request spans two or more domains, run the relevant specialists and **integrate + review the combined result yourself**. For product requests, always let the product trio shape the story BEFORE routing to specialists.
+If a request spans two or more domains, run the relevant specialists and **integrate + review the combined result yourself**. For product requests, always let the product trio shape the story BEFORE routing to specialists. For anything the Principal Architect has flagged (Supabase exhaustion, cross-cutting perf), load `supabase-efficiency` + `architecture-review` before routing.
 
 ## 5. Supervising & Reviewing — The Validation Gate
 
@@ -172,6 +206,10 @@ Periodically (or when the user asks "are the agents equipped?"):
 
 Trigger: a request needs a capability no current member has (e.g., "add analytics", "add email notifications", "add i18n").
 
+> **The Principal Architect is the TOP gatekeeper.** For structural hires (new
+> agent, new project skill), coordinate with `principal-architect` — they may
+> decide the hire themselves and hand it to you to register.
+
 1. **Confirm the gap** — re-check the roster and installed skills before creating anything.
 2. **Search the marketplace FIRST** — `npx skills find <tech>`. If an official,
    high-install skill exists, install it with `npx skills add <owner/repo@skill> -g -y`
@@ -190,7 +228,9 @@ Trigger: a request needs a capability no current member has (e.g., "add analytic
 4. **Equip it with skills** — point it at the relevant installed/installed-now
    third-party skills, and create `.github/skills/<skill-name>/SKILL.md` for each
    project-specific domain it needs (keyword-rich description, step-by-step procedures, self-contained).
-5. **Update the roster** — add the new agent to the team leader's `agents:` frontmatter list and the roster table.
+5. **Update the roster** — add the new agent to the team leader's `agents:` frontmatter
+   list, the roster table, AND the Principal Architect's `agents:` list (so the
+   Architect can supervise it).
 6. **Validate** — frontmatter YAML is well-formed; `name` matches the filename; `description` present and specific.
 
 ## 8. Validation Checklist

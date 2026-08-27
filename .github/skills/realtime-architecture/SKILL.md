@@ -45,3 +45,36 @@ Never surface raw socket/Azure/Supabase error text. Map to human copy:
 - Keep `getSupabaseBrowser()` usage client-only.
 - Always unsubscribe/close on unmount (avoid leaking channels).
 - When changing the funnel shape, update `FunnelCounts` in `types/api.ts` and the slice together.
+
+## ⚠️ Efficiency — Filter in the Subscription, NOT After Delivery (load `supabase-efficiency`)
+
+> **The #1 Supabase Realtime burner in this repo:** the `jobs` channel in
+> `useRealtimeRun.ts` currently subscribes to `{ event: "*", table: "jobs" }` and
+> filters to the active run CLIENT-SIDE after every row is delivered. That streams
+> every change to every job the user can see (including account-wide evaluator
+> writes) over the websocket → Realtime rate limits → missed updates → exhaustion.
+
+Fix pattern (server-side filter + minimal events):
+
+```ts
+// ❌ before — delivers EVERY jobs change, filters in JS
+.on("postgres_changes", { event: "*", schema: "public", table: "jobs" }, ...)
+
+// ✅ after — only rows for THIS run, only the events you need
+.on("postgres_changes",
+  { event: "INSERT", schema: "public", table: "jobs",
+    filter: `pipeline_run_id=eq.${runId}` }, ...)
+```
+
+Rules:
+
+- The connection effect is keyed on `enabled`; the filter depends on `runId`.
+  Re-subscribe (or set the filter) when `runId` changes — do NOT open a new channel
+  per render.
+- Only subscribe to events you actually render: `INSERT` for the job stream; add
+  `UPDATE` only if resume_status/fit changes genuinely need live delivery.
+- Realtime applies RLS to postgres_changes — confirm the `jobs` policy scopes to
+  `user_id = auth.uid()` and never subscribe to rows the user can't read.
+- Apply the same treatment to `pipeline_runs`, `evaluation_runs`, and
+  `generated_resumes` channels: filter by the active run / relevant columns and pick
+  minimal events.

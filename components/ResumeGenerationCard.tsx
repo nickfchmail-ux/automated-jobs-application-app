@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 
 const TONE_TEXT: Record<string, string> = {
   neutral: "text-zinc-500 dark:text-zinc-400",
-  active: "text-indigo-600 dark:text-indigo-400",
+  active: "text-violet-600 dark:text-violet-400",
   success: "text-emerald-600 dark:text-emerald-400",
   error: "text-rose-600 dark:text-rose-400",
 };
@@ -137,12 +137,12 @@ export default function ResumeGenerationCard({
 
       {isBuilding ? (
         <div className="flex items-center gap-3">
-          <DotLoader dotClassName="bg-indigo-500" />
+          <DotLoader dotClassName="bg-violet-500" />
           <div>
-            <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+            <p className="text-sm font-medium text-violet-700 dark:text-violet-300">
               Tailoring your resume for {company}
             </p>
-            <p className="text-xs text-indigo-500 dark:text-indigo-400">
+            <p className="text-xs text-violet-500 dark:text-violet-400">
               This usually takes a minute. You can leave this page — we&apos;ll
               update you here.
             </p>
@@ -153,7 +153,7 @@ export default function ResumeGenerationCard({
           <button
             type="button"
             onClick={() => setPreviewOpen(true)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+            className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1"
           >
             <svg
               className="w-4 h-4"
@@ -206,7 +206,7 @@ export default function ResumeGenerationCard({
             type="button"
             onClick={handleGenerate}
             disabled={requesting}
-            className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/60 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg
               className="w-4 h-4"

@@ -85,6 +85,27 @@ body {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Mobile hardening — never a horizontal page scroll; respect the     */
+/*  notched-device safe areas so fixed bars (mobile top bar / drawer)  */
+/*  don't collide with the status bar or home indicator.               */
+/* ------------------------------------------------------------------ */
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+/* Let fixed/sticky chrome (mobile top bar, drawer) clear the notch. */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Type utilities                                                     */
 /* ------------------------------------------------------------------ */
 @layer utilities {

@@ -10,6 +10,7 @@ You are the **Frontend State Agent** for JobSeek. You own how the client stores,
 ## Load These Skills First
 
 - `redux-state-patterns` — the exact slice/store/hook patterns used in this repo
+- `supabase-efficiency` — the verified Supabase burners + fixes (esp. over-fetching, N+1, and client-side caching — you own the client side of data flow)
 - `jobseek-project-conventions` — project facts
 - `scraping-api-integration` — the sibling scraping backend (docs-first, source-of-truth tracking)
 - `third-party-skills` — the `npx skills` marketplace (e.g. vercel-react-best-practices)

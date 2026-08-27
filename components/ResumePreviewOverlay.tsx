@@ -128,7 +128,7 @@ export default function ResumePreviewOverlay({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700 shrink-0 bg-white dark:bg-zinc-900">
-          <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">
+          <span className="text-sm font-semibold text-violet-700 dark:text-violet-400">
             Tailored Resume
           </span>
           <div className="flex items-center gap-2">

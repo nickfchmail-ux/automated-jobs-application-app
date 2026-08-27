@@ -17,14 +17,42 @@ export async function getResumeInfo(): Promise<
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
-  // List all files in bucket and find one matching this user
+  // The resume filename is DETERMINISTIC (`${userId}-resume.${ext}`), so we
+  // don't know the extension without listing. To avoid a bucket LIST on every
+  // call (a storage-op cost on every profile render), probe the three allowed
+  // extensions directly instead — each probe is a cheap HEAD against a known
+  // path, not a full bucket scan.
+  const candidates = ["pdf", "doc", "docx"].map(
+    (ext) => `${userId}-resume.${ext}`,
+  );
+
+  // Try to find the existing file without a full bucket listing.
+  let match: { name: string } | null = null;
+  for (const name of candidates) {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(name, 60 * 60);
+    if (!error && data?.signedUrl) {
+      // A signed URL existing means the object exists — use it directly.
+      return {
+        ok: true,
+        userId,
+        fileName: name,
+        signedUrl: data.signedUrl,
+      };
+    }
+  }
+
+  // Fallback: no file found via direct probes — do a scoped LIST to confirm
+  // (covers unusual extensions / legacy names). Only reached when the user
+  // has no resume yet, so it's rare.
   const { data: files, error } = await supabase.storage.from(BUCKET).list("", {
     search: `${userId}-resume`,
   });
 
   if (error) return { ok: false, error: error.message };
 
-  const match = files?.find((f) => f.name.startsWith(`${userId}-resume`));
+  match = files?.find((f) => f.name.startsWith(`${userId}-resume`)) ?? null;
 
   if (!match) {
     return { ok: true, userId, fileName: null, signedUrl: null };
@@ -77,6 +105,22 @@ export async function uploadResumeAction(
   const old = existing?.find((f) => f.name.startsWith(`${userId}-resume`));
   if (old && old.name !== newName) {
     await supabase.storage.from(BUCKET).remove([old.name]);
+  }
+
+  // ── Skip re-upload when the file is unchanged ──────────────────────
+  // If the existing file has the same name AND a known matching size, the
+  // content is (almost certainly) identical — don't pay the storage write
+  // again. This avoids re-uploading the resume on every save click. The
+  // `list()` response's `metadata.size` is only sometimes populated; when
+  // it's absent we fall through and upload (safe default).
+  const knownSize = (old as { metadata?: Record<string, unknown> } | undefined)
+    ?.metadata?.size;
+  if (
+    old?.name === newName &&
+    typeof knownSize === "number" &&
+    knownSize === file.size
+  ) {
+    return { ok: true };
   }
 
   const arrayBuffer = await file.arrayBuffer();

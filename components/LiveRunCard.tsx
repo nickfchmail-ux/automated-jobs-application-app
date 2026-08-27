@@ -17,6 +17,38 @@ const BOARD_META: Record<string, { label: string; color: string }> = {
 };
 
 /**
+ * Turn the backend's raw run failure (`last_error` — e.g. "All boards failed:
+ * ConnectTimeoutError: ... fetch failed", proxy timeouts, anti-bot blocks)
+ * into honest, jargon-free copy. The backend failure reasons come from the
+ * scraper worker (see backend azure/functions/src/functions/scraperWorker.ts)
+ * and can contain internal network/proxy detail — never surface that verbatim
+ * (violates the "no jargon" principle).
+ */
+function friendlyRunFailure(raw: string): string {
+  const s = raw ?? "";
+  const low = s.toLowerCase();
+  // The job boards couldn't be reached from the search service — the known
+  // transient Azure egress / proxy issue. Honest + actionable.
+  if (
+    /connecttimeout|timed out|timeout|ecconn|socket|fetch failed|network|all boards failed|unreachable|egress/i.test(
+      low,
+    )
+  ) {
+    return "We couldn't reach the job boards this time — the search service is having a temporary connection problem. Your saved jobs are safe. Try again in a minute.";
+  }
+  // Anti-bot / proxy blocks (retryable — the boards themselves blocked us).
+  if (/blocked|anti-bot|challenge|403|forbidden|security check/i.test(low)) {
+    return "One or more job boards blocked the search (they think it's a bot). Your saved jobs are safe — try again in a few minutes.";
+  }
+  // Rate limits / credits exhausted.
+  if (/rate|429|credit|exhausted|quota/i.test(low)) {
+    return "The job boards are rate-limiting searches right now. Try again later today.";
+  }
+  // Anything else — keep it warm and generic.
+  return "Something went wrong, but your saved jobs are safe. Please try again.";
+}
+
+/**
  * The "run card" — walks the user through their live search in plain English:
  *   In line… → Searching the job boards… → Loading job details…
  *   → Matching jobs against your resume… → Done ✓
@@ -248,8 +280,8 @@ export default function LiveRunCard({
       return {
         icon: "active",
         label: `Matching ${analysedCount} job${analysedCount === 1 ? "" : "s"} against your resume…`,
-        tone: "text-indigo-600 dark:text-indigo-400",
-        bar: "bg-indigo-500",
+        tone: "text-violet-600 dark:text-violet-400",
+        bar: "bg-violet-500",
       } as const;
     if (displayNewJobs > 0)
       return {
@@ -623,18 +655,18 @@ export default function LiveRunCard({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
-            className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-4 py-3"
+            className="flex items-center justify-between gap-3 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 px-4 py-3"
             role="status"
             aria-live="polite"
           >
-            <p className="text-xs text-indigo-700 dark:text-indigo-300">
+            <p className="text-xs text-violet-700 dark:text-violet-300">
               <strong className="font-semibold">{runUnevaluated}</strong> job
               {runUnevaluated !== 1 ? "s" : ""} from this search still need
               matching against your resume.
             </p>
             <a
               href="#match-jobs"
-              className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 rounded-lg px-3 py-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
+              className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 rounded-lg px-3 py-1.5 hover:bg-violet-100 dark:hover:bg-violet-900 transition-colors"
             >
               Match jobs →
             </a>
@@ -653,6 +685,11 @@ export default function LiveRunCard({
           >
             <motion.div
               className="h-full rounded-full bg-blue-500"
+              // Start at 0 width — WITHOUT `initial`, Framer Motion uses the
+              // element's natural width (100%) as the starting point, so the
+              // bar flashes FULL then springs back to the real progress
+              // ("starts full, rolls back").
+              initial={{ width: "0%" }}
               animate={{ width: `${progress}%` }}
               transition={{ type: "spring", stiffness: 120, damping: 24 }}
             />
@@ -702,8 +739,12 @@ export default function LiveRunCard({
             stream as a fallback so every board always shows real numbers. */}
         {boards.length > 0 && (
           <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3">
-            <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-              <table className="w-full text-xs">
+            {/* Horizontal scroll on mobile — 7 columns (Board/New/Found/Dup/
+                Reading/Done/Status) don't fit a phone width. Wrapping the
+                table in overflow-x-auto lets it scroll sideways instead of
+                crushing the columns (the old overflow-hidden squished them). */}
+            <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <table className="w-full text-xs min-w-[560px]">
                 <thead>
                   <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-zinc-400 dark:text-zinc-500">
                     <th className="text-left font-medium px-3 py-1.5">Board</th>
@@ -812,7 +853,7 @@ export default function LiveRunCard({
                           case "extracting":
                             return {
                               text: "Reading details…",
-                              tone: "text-indigo-600 dark:text-indigo-400",
+                              tone: "text-violet-600 dark:text-violet-400",
                             };
                           case "pending":
                             return {
@@ -912,13 +953,14 @@ export default function LiveRunCard({
           </div>
         )}
 
-        {/* Run failed — surface last_error in warm copy */}
+        {/* Run failed — surface last_error in warm copy (mapped to friendly,
+            jargon-free language — never dump the raw backend error). */}
         {phase === "failed" && errorMsg && (
           <div
             role="alert"
             className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-700 dark:text-red-300"
           >
-            Something went wrong: {errorMsg}
+            {friendlyRunFailure(errorMsg)}
           </div>
         )}
       </div>

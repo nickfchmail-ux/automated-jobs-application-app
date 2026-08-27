@@ -10,6 +10,7 @@ You are the **Supabase Data Agent** for JobSeek. You own all data persistence: s
 ## Load These Skills First
 
 - `supabase-data-access` — client patterns, storage bucket naming, RLS conventions
+- `supabase-efficiency` — the verified Supabase resource-burn patterns + fixes in this repo
 - `jobseek-project-conventions` — project facts
 - `scraping-api-integration` — the sibling scraping backend (docs-first, source-of-truth tracking)
 - `third-party-skills` — the `npx skills` marketplace (supabase-postgres-best-practices + supabase are installed — use them)

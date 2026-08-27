@@ -39,6 +39,32 @@ export type Job = {
   resume_pdf_url?: string | null;
 };
 
+/**
+ * The projected shape used by LIST surfaces (/matches, /review) — exactly the
+ * columns `JOBS_LIST_SELECT` fetches. Heavy detail-only columns
+ * (raw_description, cover_letter, responsibilities, requirements, benefits,
+ * about_company, fit_reasons) are intentionally NOT present: the list views
+ * never render them, and fetching them for every row on every page load was a
+ * Supabase exhaustor. The job detail page uses the full `Job` shape instead.
+ */
+export type JobListItem = Omit<
+  Job,
+  | "raw_description"
+  | "cover_letter"
+  | "responsibilities"
+  | "requirements"
+  | "benefits"
+  | "about_company"
+  | "fit_reasons"
+  | "short_description"
+  | "keyword"
+> & {
+  short_description?: string | null;
+  keyword?: string | null;
+  board?: string | null;
+  status?: string | null;
+};
+
 type JobSource = {
   name: string;
   shortName: string;
@@ -134,7 +160,7 @@ function AwaitingEvaluationBadge() {
   );
 }
 
-export default function JobCard({ job }: { job: Job }) {
+export default function JobCard({ job }: { job: Job | JobListItem }) {
   const parsedSkills: string[] =
     typeof job.skills === "string"
       ? JSON.parse(job.skills)
@@ -150,7 +176,7 @@ export default function JobCard({ job }: { job: Job }) {
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -3 }}
-      className="relative card card-hover flex flex-col h-130 cursor-pointer group"
+      className="relative card card-hover flex flex-col min-h-44 cursor-pointer group"
     >
       {/* Stretched link — entire card navigates to detail page */}
       <Link
@@ -340,7 +366,7 @@ export default function JobCard({ job }: { job: Job }) {
           href={job.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+          className="text-xs font-medium violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
         >
           View on {source.shortName}
           <svg

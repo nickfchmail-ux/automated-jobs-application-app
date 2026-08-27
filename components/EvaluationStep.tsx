@@ -186,6 +186,10 @@ export default function EvaluationStep() {
   async function backToMatch() {
     setDismissed(true);
     setEvalError(null);
+    // Reset the in-flight flag — the button must be usable for the next
+    // match (it stays true through the progress view after a successful
+    // start, and is only cleared here or on failure).
+    setEvalRequesting(false);
     // Start fresh — clear the matched-key memory so the dropdown selection
     // governs the next match, and reset selection so the next key defaults.
     matchedKeyRef.current = null;
@@ -210,6 +214,16 @@ export default function EvaluationStep() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evaluationStatus]);
+
+  // Reset the in-flight flag once the scoped match is done. On success we
+  // deliberately KEEP `evalRequesting` true while the progress view is up so
+  // the button never flashes back to "Match N jobs" before the progress table
+  // appears. But if the evaluator finishes very quickly (before the progress
+  // view mounts) the button inside the completed/selector view must not be
+  // stuck on "Starting…" — reset it here so it's usable for the next key.
+  useEffect(() => {
+    if (scopedDone) setEvalRequesting(false);
+  }, [scopedDone]);
 
   /**
    * FINAL authoritative refresh when the evaluation completes.
@@ -365,8 +379,11 @@ export default function EvaluationStep() {
       const result = await startEvaluationAction(targetRunId, {
         searchKey: selected,
       });
-      setEvalRequesting(false);
       if (!result.ok) {
+        // On FAILURE: re-enable the button so the user can retry (the
+        // selector + Match button reappear). The error state below drives
+        // the copy.
+        setEvalRequesting(false);
         // Roll the evaluation state back so the selector (dropdown + Match
         // button) reappears — otherwise `runEvaluating()` left the status
         // at "evaluating" and the user would be stuck on the progress view
@@ -392,9 +409,11 @@ export default function EvaluationStep() {
         }
         return;
       }
-      // Success — remember the key that was matched (it will drop out of
-      // `keys` on the reload below), and refresh the key list so the
-      // just-matched key disappears once the evaluator finishes.
+      // SUCCESS — do NOT revert the button (keep `evalRequesting` true). The
+      // progress view below takes over via `matchInFlight`/`scopedRuns`, so
+      // reverting here would flash "Match N jobs" for a frame before the
+      // progress table renders (the flicker the user saw). `evalRequesting`
+      // is only reset on failure (above) or when leaving the progress view.
       matchedKeyRef.current = {
         key: selected,
         keyword: selectedKey?.keyword ?? selected.replace(/_/g, " "),
