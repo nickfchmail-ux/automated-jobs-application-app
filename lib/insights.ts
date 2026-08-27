@@ -112,106 +112,6 @@ export interface Insights {
   };
 }
 
-/** Pull the tokens out of a list of free-text reasons (fit_reasons / not_fit_reasons). */
-function tokenize(reasons: string[]): string[] {
-  const tokens: string[] = [];
-  // Words that make a fragment noisy (sentence connectives / vague nouns).
-  const stop = new Set([
-    "the",
-    "and",
-    "with",
-    "for",
-    "in",
-    "of",
-    "no",
-    "a",
-    "an",
-    "to",
-    "on",
-    "is",
-    "are",
-    "as",
-    "or",
-    "at",
-    "be",
-    "not",
-    "which",
-    "that",
-    "this",
-    "their",
-    "his",
-    "her",
-    "its",
-    "experience",
-    "expertise",
-    "skills",
-    "skill",
-    "knowledge",
-    "strong",
-    "good",
-    "working",
-    "hands",
-    "related",
-    "proficiency",
-    "proficient",
-    "relevant",
-    "years",
-    "year",
-    "role",
-    "jobs",
-    "job",
-    "work",
-    "development",
-    "developer",
-    "engineer",
-    "requirement",
-    "requirements",
-    "candidate",
-    "position",
-    "company",
-    "team",
-    "ability",
-    "experience.",
-    "background",
-    "demonstrated",
-    "demonstrates",
-    "proven",
-  ]);
-  // Only keep phrases that START with a proper noun / tech term (capitalized
-  // or a known tool pattern), so we surface "React", "Next.js", "Django"
-  // instead of fragments like "years of" or "which is".
-  for (const r of reasons ?? []) {
-    const s = String(r ?? "");
-    // Match noun phrases: capitalized tech terms + one following word.
-    const phrases =
-      s.match(/([A-Z][A-Za-z0-9+#.]+(?: [A-Za-z][A-Za-z0-9+#.]+)?)/g) ?? [];
-    for (const p of phrases) {
-      const words = p.trim().split(/\s+/);
-      const first = words[0];
-      const last = words[words.length - 1].toLowerCase();
-      // Drop fragments that end in a stopword or are pure filler.
-      if (stop.has(last) || stop.has(first.toLowerCase())) continue;
-      if (first.length < 2) continue;
-      tokens.push(p.trim());
-    }
-  }
-  return tokens;
-}
-
-/** Count token frequency, return top N. */
-function topTokens(tokens: string[], total: number, n = 6): FitInsight[] {
-  const counts = new Map<string, number>();
-  for (const t of tokens) counts.set(t, (counts.get(t) ?? 0) + 1);
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n)
-    .map(([term, count]) => ({
-      term,
-      count,
-      share: total ? count / total : 0,
-    }));
-}
-
 /** Median of an array. */
 function median(nums: number[]): number {
   if (!nums.length) return 0;
@@ -220,304 +120,223 @@ function median(nums: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/**
+ * The raw JSON shape the `get_user_insights` Postgres RPC returns.
+ * The DB does ALL the aggregation (strengths/gaps tokenization, salary
+ * normalization, trend, boards, keywords, buckets, top matches, momentum)
+ * so we only ship ~KB of computed JSON instead of up to 5000 raw job rows.
+ */
+type RpcInsights = Partial<{
+  totals: {
+    scraped: number;
+    evaluated: number;
+    reviewed: number;
+    matches: number;
+    notFit: number;
+    applied: number;
+    resumeBuilt: number;
+    coverLetterBuilt: number;
+    duplicate: number;
+  };
+  avgFitScore: number;
+  medianFitScore: number;
+  strengths: { term: string; count: number; share: number }[];
+  gaps: { term: string; count: number; share: number }[];
+  trend: { label: string; avgScore: number; count: number }[];
+  byBoard: { board: string; evaluated: number; matches: number; fitRate: number }[];
+  byKeyword: { keyword: string; evaluated: number; matches: number; fitRate: number }[];
+  scoreBuckets: { great: number; possible: number; low: number; total: number };
+  salary: {
+    medianMonthly: number;
+    avgMonthly: number;
+    withSalary: number;
+    distribution: { label: string; count: number }[];
+    topByKeyword: { keyword: string; avgMonthly: number; count: number }[];
+    topByBoard: { board: string; avgMonthly: number; count: number }[];
+  };
+  topMatches: {
+    id: string;
+    title: string;
+    company: string;
+    fitScore: number;
+    justification: string;
+    salary: string;
+    applied: boolean;
+    board: string;
+    searchKey: string;
+    coverLetterDone: boolean;
+  }[];
+  momentum: {
+    applied: number;
+    appliedRate: number;
+    notInterested: number;
+    matchesNotApplied: number;
+    coverLetterDone: number;
+    totalLetters: number;
+    coverLetterRate: number;
+    resumeDone: number;
+  };
+}>;
+
+/** Defensive fillers so a partial/empty RPC result still satisfies the contract. */
+const EMPTY_INSIGHTS: Insights = {
+  totals: {
+    scraped: 0,
+    evaluated: 0,
+    reviewed: 0,
+    matches: 0,
+    notFit: 0,
+    applied: 0,
+    resumeBuilt: 0,
+    duplicate: 0,
+    coverLetterBuilt: 0,
+  },
+  avgFitScore: 0,
+  medianFitScore: 0,
+  strengths: [],
+  gaps: [],
+  trend: [],
+  byBoard: [],
+  byKeyword: [],
+  scoreBuckets: { great: 0, possible: 0, low: 0, total: 0 },
+  salary: {
+    medianMonthly: 0,
+    avgMonthly: 0,
+    withSalary: 0,
+    distribution: [
+      { label: "≤ 15k", count: 0 },
+      { label: "15–25k", count: 0 },
+      { label: "25–40k", count: 0 },
+      { label: "40–60k", count: 0 },
+      { label: "60k+", count: 0 },
+    ],
+    topByKeyword: [],
+    topByBoard: [],
+  },
+  topMatches: [],
+  momentum: {
+    applied: 0,
+    appliedRate: 0,
+    notInterested: 0,
+    matchesNotApplied: 0,
+    coverLetterDone: 0,
+    totalLetters: 0,
+    coverLetterRate: 0,
+    resumeDone: 0,
+  },
+};
+
+/**
+ * Deep job-search intelligence — computed IN POSTGRES.
+ *
+ * Calls the `get_user_insights` RPC (a single SQL aggregation pass over the
+ * user's jobs, using the `idx_jobs_user_created_at` index) instead of
+ * shipping up to 5000 raw rows × 22 columns to Node. This:
+ *   - cuts the Supabase payload ~1000× (MBs → KB),
+ *   - removes the old `.limit(5000)` truncation (SQL aggregates ALL rows,
+ *     so insight is MORE accurate for power users),
+ *   - keeps every metric identical to the previous Node computation.
+ */
 export async function getInsights(userId: string): Promise<Insights> {
-  // Pull all the fields we need for insight (not just counts).
-  const { data, error } = await supabase
-    .from("jobs")
-    .select(
-      "id, fit, fit_score, fit_reasons, not_fit_reasons, applied, board, search_key, status, resume_status, cover_letter_status, pipeline_run_id, interested_in, created_at, title, company, justification, expected_salary, salary_min, salary_max, salary_currency, salary_period",
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(5000);
+  if (!userId) return EMPTY_INSIGHTS;
 
-  if (error) {
-    console.error("[insights] query error:", error.message);
-  }
-  const jobs = (data ?? []) as (Record<string, unknown> & {
-    fit: boolean | null;
-    fit_score: number | null;
-    fit_reasons: string[] | null;
-    not_fit_reasons: string[] | null;
-    applied: boolean | null;
-    board: string | null;
-    search_key: string | null;
-    status: string | null;
-    resume_status: string | null;
-    cover_letter_status: string | null;
-    pipeline_run_id: string | null;
-    interested_in: boolean | null;
-    created_at: string;
-    title: string | null;
-    company: string | null;
-    justification: string | null;
-    expected_salary: string | null;
-    salary_min: number | null;
-    salary_max: number | null;
-    salary_currency: string | null;
-    salary_period: string | null;
-  })[];
-
-  const evaluated = jobs.filter((j) => j.fit !== null);
-  const matches = evaluated.filter((j) => j.fit === true);
-  const notFit = evaluated.filter((j) => j.fit === false);
-  const scores = evaluated
-    .map((j) => Number(j.fit_score ?? 0))
-    .filter((n) => Number.isFinite(n));
-  const avgFitScore = scores.length
-    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-    : 0;
-  const medianFitScore = Math.round(median(scores));
-
-  // Strengths from fit_reasons; gaps from not_fit_reasons.
-  const strengthTokens = tokenize(matches.flatMap((j) => j.fit_reasons ?? []));
-  const gapTokens = tokenize(notFit.flatMap((j) => j.not_fit_reasons ?? []));
-  const strengths = topTokens(strengthTokens, Math.max(1, matches.length));
-  const gaps = topTokens(gapTokens, Math.max(1, notFit.length));
-
-  // Trend: group evaluated jobs by run, oldest → newest, avg score.
-  // Each point is labeled with the run's SEARCH KEY (what the user searched)
-  // so the trend bars are meaningful — e.g. "web developer", "frontend".
-  const byRun = new Map<
-    string,
-    { searchKey: string | null; scores: number[] }
-  >();
-  for (const j of evaluated) {
-    const runId = String(j.pipeline_run_id ?? "other");
-    const entry = byRun.get(runId) ?? {
-      searchKey: j.search_key ?? null,
-      scores: [],
-    };
-    if (Number.isFinite(Number(j.fit_score)))
-      entry.scores.push(Number(j.fit_score));
-    byRun.set(runId, entry);
-  }
-  const runOrder = [...byRun.entries()];
-  const trend: TrendPoint[] = runOrder.slice(0, 8).map(([runId, e], i) => {
-    // Human-readable search key: "web_developer" → "Web developer".
-    const searchKey = e.searchKey?.trim()
-      ? e.searchKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-      : "";
-    return {
-      label: searchKey || (runId === "other" ? "Earlier" : `Run ${i + 1}`),
-      avgScore: Math.round(
-        e.scores.reduce((a, b) => a + b, 0) / Math.max(1, e.scores.length),
-      ),
-      count: e.scores.length,
-    };
+  const { data, error } = await supabase.rpc("get_user_insights", {
+    p_user_id: userId,
   });
 
-  // Board mix.
-  const byBoardMap = new Map<string, { evaluated: number; matches: number }>();
-  for (const j of evaluated) {
-    const b = String(j.board ?? "other");
-    const e = byBoardMap.get(b) ?? { evaluated: 0, matches: 0 };
-    e.evaluated++;
-    if (j.fit) e.matches++;
-    byBoardMap.set(b, e);
-  }
-  const byBoard = [...byBoardMap.entries()]
-    .map(([board, e]) => ({
-      board,
-      evaluated: e.evaluated,
-      matches: e.matches,
-      fitRate: e.evaluated ? Math.round((e.matches / e.evaluated) * 100) : 0,
-    }))
-    .sort((a, b) => b.evaluated - a.evaluated)
-    .slice(0, 6);
-
-  // Keyword performance.
-  const byKwMap = new Map<string, { evaluated: number; matches: number }>();
-  for (const j of evaluated) {
-    const k = String(j.search_key ?? "general");
-    const e = byKwMap.get(k) ?? { evaluated: 0, matches: 0 };
-    e.evaluated++;
-    if (j.fit) e.matches++;
-    byKwMap.set(k, e);
-  }
-  const byKeyword = [...byKwMap.entries()]
-    .map(([keyword, e]) => ({
-      keyword,
-      evaluated: e.evaluated,
-      matches: e.matches,
-      fitRate: e.evaluated ? Math.round((e.matches / e.evaluated) * 100) : 0,
-    }))
-    .filter((k) => k.evaluated > 0)
-    .sort((a, b) => b.fitRate - a.fitRate)
-    .slice(0, 6);
-
-  // ── Fit-score bucket distribution ────────────────────────────────
-  const scoreBuckets = {
-    great: 0,
-    possible: 0,
-    low: 0,
-    total: evaluated.length,
-  };
-  for (const j of evaluated) {
-    const s = Number(j.fit_score ?? 0);
-    if (s >= 75) scoreBuckets.great++;
-    else if (s >= 50) scoreBuckets.possible++;
-    else scoreBuckets.low++;
+  if (error || !data) {
+    console.error("[insights] query error:", error?.message ?? "no data");
+    return EMPTY_INSIGHTS;
   }
 
-  // ── Salary intelligence (over MATCHES with a real salary range) ──
-  // Normalize to monthly HKD for comparison.
-  const toMonthly = (j: (typeof evaluated)[number]): number | null => {
-    if (j.salary_min == null || j.salary_max == null) return null;
-    let min = Number(j.salary_min);
-    let max = Number(j.salary_max);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0) return null;
-    const period = String(j.salary_period ?? "month").toLowerCase();
-    if (period.includes("year") || period.includes("annual")) {
-      min /= 12;
-      max /= 12;
-    } else if (period.includes("hour") || period.includes("hr")) {
-      min *= 160; // ~full-time hours/month
-      max *= 160;
-    }
-    return Math.round((min + max) / 2);
-  };
-
-  const salaries = matches
-    .map((j) => ({ j, monthly: toMonthly(j) }))
-    .filter(
-      (x): x is { j: (typeof matches)[number]; monthly: number } =>
-        x.monthly !== null && x.monthly > 0,
-    );
-  const monthlyVals = salaries.map((s) => s.monthly).sort((a, b) => a - b);
-  const medianMonthly = monthlyVals.length
-    ? monthlyVals[Math.floor(monthlyVals.length / 2)]
-    : 0;
-  const avgMonthly = monthlyVals.length
-    ? Math.round(monthlyVals.reduce((a, b) => a + b, 0) / monthlyVals.length)
-    : 0;
-
-  const salaryDistribution = [
-    { label: "≤ 15k", count: 0 },
-    { label: "15–25k", count: 0 },
-    { label: "25–40k", count: 0 },
-    { label: "40–60k", count: 0 },
-    { label: "60k+", count: 0 },
-  ];
-  for (const v of monthlyVals) {
-    if (v <= 15000) salaryDistribution[0].count++;
-    else if (v <= 25000) salaryDistribution[1].count++;
-    else if (v <= 40000) salaryDistribution[2].count++;
-    else if (v <= 60000) salaryDistribution[3].count++;
-    else salaryDistribution[4].count++;
-  }
-
-  // Highest-paying keywords + boards (by avg monthly salary of matches).
-  const salByKw = new Map<string, { sum: number; count: number }>();
-  const salByBoard = new Map<string, { sum: number; count: number }>();
-  for (const { j, monthly } of salaries) {
-    const kw = String(j.search_key ?? "general");
-    const e = salByKw.get(kw) ?? { sum: 0, count: 0 };
-    e.sum += monthly;
-    e.count++;
-    salByKw.set(kw, e);
-    const b = String(j.board ?? "other");
-    const eb = salByBoard.get(b) ?? { sum: 0, count: 0 };
-    eb.sum += monthly;
-    eb.count++;
-    salByBoard.set(b, eb);
-  }
-  const salaryTopKw = [...salByKw.entries()]
-    .map(([keyword, e]) => ({
-      keyword,
-      avgMonthly: Math.round(e.sum / e.count),
-      count: e.count,
-    }))
-    .filter((k) => k.count >= 1)
-    .sort((a, b) => b.avgMonthly - a.avgMonthly)
-    .slice(0, 5);
-  const salaryTopBoard = [...salByBoard.entries()]
-    .map(([board, e]) => ({
-      board,
-      avgMonthly: Math.round(e.sum / e.count),
-      count: e.count,
-    }))
-    .filter((k) => k.count >= 1)
-    .sort((a, b) => b.avgMonthly - a.avgMonthly)
-    .slice(0, 5);
-
-  // ── Top matches (strongest fit with justification + salary) ──────
-  const topMatches = matches
-    .map((j) => ({
-      id: String(j.id),
-      title: String(j.title ?? "Untitled role"),
-      company: String(j.company ?? "Unknown company"),
-      fitScore: Math.round(Number(j.fit_score ?? 0)),
-      justification: String(j.justification ?? ""),
-      salary: String(j.expected_salary ?? ""),
-      applied: j.applied === true,
-      board: String(j.board ?? ""),
-      searchKey: String(j.search_key ?? ""),
-      coverLetterDone: j.cover_letter_status === "completed",
-    }))
-    .sort((a, b) => b.fitScore - a.fitScore)
-    .slice(0, 6);
-
-  // ── Application momentum ─────────────────────────────────────────
-  const appliedCount = jobs.filter((j) => j.applied === true).length;
-  const notInterestedCount = jobs.filter(
-    (j) => j.interested_in === false,
-  ).length;
-  // Letters on MATCHES only — keeps the pipeline funnel monotonic
-  // (matches → letters ≤ matches). Users can also build letters on non-fit
-  // jobs; that's tracked separately as totalLetters.
-  const coverLetterOnMatches = matches.filter(
-    (j) => j.cover_letter_status === "completed",
-  ).length;
-  const totalLetters = jobs.filter(
-    (j) => j.cover_letter_status === "completed",
-  ).length;
-  const resumeDone = jobs.filter((j) => j.resume_status === "completed").length;
-  const momentum = {
-    applied: appliedCount,
-    appliedRate: matches.length
-      ? Math.round((appliedCount / matches.length) * 100)
-      : 0,
-    notInterested: notInterestedCount,
-    matchesNotApplied: matches.length - appliedCount,
-    coverLetterDone: coverLetterOnMatches,
-    totalLetters,
-    coverLetterRate: matches.length
-      ? Math.round((coverLetterOnMatches / matches.length) * 100)
-      : 0,
-    resumeDone,
-  };
+  const r = data as RpcInsights;
+  const t = r.totals;
+  const mom = r.momentum;
+  const sal = r.salary;
 
   return {
     totals: {
-      scraped: jobs.length,
-      evaluated: evaluated.length,
-      reviewed: jobs.filter((j) => j.interested_in !== false).length,
-      matches: matches.length,
-      notFit: notFit.length,
-      applied: appliedCount,
-      resumeBuilt: resumeDone,
-      // Pipeline funnel: letters ready on matches (≤ matches).
-      coverLetterBuilt: coverLetterOnMatches,
-      duplicate: jobs.filter((j) => j.status === "duplicate").length,
+      scraped: t?.scraped ?? 0,
+      evaluated: t?.evaluated ?? 0,
+      reviewed: t?.reviewed ?? 0,
+      matches: t?.matches ?? 0,
+      notFit: t?.notFit ?? 0,
+      applied: t?.applied ?? 0,
+      resumeBuilt: t?.resumeBuilt ?? 0,
+      duplicate: t?.duplicate ?? 0,
+      coverLetterBuilt: t?.coverLetterBuilt ?? 0,
     },
-    avgFitScore,
-    medianFitScore,
-    strengths,
-    gaps,
-    trend,
-    byBoard,
-    byKeyword,
-    scoreBuckets,
+    avgFitScore: r.avgFitScore ?? 0,
+    medianFitScore: r.medianFitScore ?? 0,
+    strengths: (r.strengths ?? []).map((s) => ({
+      term: s.term,
+      count: s.count,
+      share: s.share,
+    })),
+    gaps: (r.gaps ?? []).map((g) => ({ term: g.term, count: g.count, share: g.share })),
+    trend: (r.trend ?? []).map((p) => ({
+      label: p.label,
+      avgScore: p.avgScore,
+      count: p.count,
+    })),
+    byBoard: (r.byBoard ?? []).map((b) => ({
+      board: b.board,
+      evaluated: b.evaluated,
+      matches: b.matches,
+      fitRate: b.fitRate,
+    })),
+    byKeyword: (r.byKeyword ?? []).map((k) => ({
+      keyword: k.keyword,
+      evaluated: k.evaluated,
+      matches: k.matches,
+      fitRate: k.fitRate,
+    })),
+    scoreBuckets: {
+      great: r.scoreBuckets?.great ?? 0,
+      possible: r.scoreBuckets?.possible ?? 0,
+      low: r.scoreBuckets?.low ?? 0,
+      total: r.scoreBuckets?.total ?? 0,
+    },
     salary: {
-      medianMonthly,
-      avgMonthly,
-      withSalary: monthlyVals.length,
-      distribution: salaryDistribution,
-      topByKeyword: salaryTopKw,
-      topByBoard: salaryTopBoard,
+      medianMonthly: sal?.medianMonthly ?? 0,
+      avgMonthly: sal?.avgMonthly ?? 0,
+      withSalary: sal?.withSalary ?? 0,
+      distribution: (sal?.distribution ?? []).map((d) => ({
+        label: d.label,
+        count: d.count,
+      })),
+      topByKeyword: (sal?.topByKeyword ?? []).map((k) => ({
+        keyword: k.keyword,
+        avgMonthly: k.avgMonthly,
+        count: k.count,
+      })),
+      topByBoard: (sal?.topByBoard ?? []).map((b) => ({
+        board: b.board,
+        avgMonthly: b.avgMonthly,
+        count: b.count,
+      })),
     },
-    topMatches,
-    momentum,
+    topMatches: (r.topMatches ?? []).map((m) => ({
+      id: m.id,
+      title: m.title,
+      company: m.company,
+      fitScore: m.fitScore,
+      justification: m.justification,
+      salary: m.salary,
+      applied: m.applied === true,
+      board: m.board,
+      searchKey: m.searchKey,
+      coverLetterDone: m.coverLetterDone === true,
+    })),
+    momentum: {
+      applied: mom?.applied ?? 0,
+      appliedRate: mom?.appliedRate ?? 0,
+      notInterested: mom?.notInterested ?? 0,
+      matchesNotApplied: mom?.matchesNotApplied ?? 0,
+      coverLetterDone: mom?.coverLetterDone ?? 0,
+      totalLetters: mom?.totalLetters ?? 0,
+      coverLetterRate: mom?.coverLetterRate ?? 0,
+      resumeDone: mom?.resumeDone ?? 0,
+    },
   };
 }
