@@ -1,7 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY ?? "";
 
 /**
  * The Supabase service-role key MUST be a JWT (starts with `eyJ` — the base64
@@ -13,20 +13,25 @@ const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
  * API → "service_role" (the long `eyJ...` JWT under "Project API keys").
  * Never use `sb_secret_...` here — that is only valid for `supabase secrets`.
  *
- * The malformed key is NOT validated with a module-load `throw`: that turns a
- * config mistake into a build-breaking crash and a site-wide outage. Instead
- * we surface a clear error at the call site (see `requireServiceClient`)
- * whenever server code actually tries to use Supabase, so a broken key fails
- * only the requests that need it and never blocks a deploy.
+ * IMPORTANT (build-safety): the client is created LAZILY via a getter, not at
+ * module load. `next build` imports route modules during page-data collection,
+ * and if env vars aren't available at that instant (e.g. a Vercel deploy
+ * where the var is temporarily unresolved), a module-load `createClient(...)`
+ * throws "supabaseUrl is required" and fails the ENTIRE build/deploy. By
+ * deferring creation until a call site actually invokes the client, a missing
+ * env var fails only the request that needs it — never the build.
  */
-export const supabase = createClient(supabaseUrl, supabaseKey);
+let _serviceClient: SupabaseClient | null = null;
 
-/**
- * Returns the service-role client AFTER validating the key at call time.
- * Returns the exact same type as the exported `supabase` singleton, so every
- * call site gets identical typing to what it had before.
- */
-export function requireServiceClient(): typeof supabase {
+export function getServiceClient(): SupabaseClient {
+  if (_serviceClient) return _serviceClient;
+  if (!supabaseUrl) {
+    throw new Error(
+      "[lib/supabase.ts] NEXT_PUBLIC_SUPABASE_URL is not set. Add it as an " +
+        "environment variable in your deployment (Vercel Project → Settings → " +
+        "Environment Variables).",
+    );
+  }
   if (!supabaseKey) {
     throw new Error(
       "[lib/supabase.ts] SUPABASE_SERVICE_KEY is not set. Add the Supabase " +
@@ -42,5 +47,29 @@ export function requireServiceClient(): typeof supabase {
         "this causes 'JWT issued at future' errors on every server query.",
     );
   }
-  return supabase;
+  _serviceClient = createClient(supabaseUrl, supabaseKey);
+  return _serviceClient;
 }
+
+/**
+ * Returns the service-role client AFTER validating the key at call time.
+ * Returns the exact same type as the (now lazy) service client, so every call
+ * site gets identical typing to what it had before.
+ */
+export function requireServiceClient(): SupabaseClient {
+  return getServiceClient();
+}
+
+// Backwards-compatible export: resolves the lazy client. Never throws at
+// module load — only when actually used (mirrors the old `supabase` export
+// without the build-breaking eager `createClient`).
+export const supabase: SupabaseClient = new Proxy(
+  {} as SupabaseClient,
+  {
+    get(_t, prop, receiver) {
+      const client = getServiceClient();
+      const v = Reflect.get(client, prop, receiver);
+      return typeof v === "function" ? v.bind(client) : v;
+    },
+  },
+);
