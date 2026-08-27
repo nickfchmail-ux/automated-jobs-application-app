@@ -8,7 +8,7 @@ import {
 import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 function detectSourceName(url: string): string {
   if (url.includes("jobsdb.com")) return "JobsDB";
@@ -106,31 +106,25 @@ export default function FitFilters({
   const [keyFilter, setKeyFilter] = useState("All");
   const [appliedFilter, setAppliedFilter] = useState("Not Applied");
   // View mode (table vs card). Persisted to localStorage so the user's choice
-  // survives navigating to a job and back.
+  // survives navigating to a job and back — and rendered IMMEDIATELY (no
+  // "table first, then card" flash on mobile).
   //
-  // HYDRATION-SAFE: the initializer returns a STABLE "table" on BOTH the
-  // server and the client's first render (never touches localStorage/window
-  // during render — that would make server HTML and client hydration
-  // disagree → React #418 hydration error, which cascades to #310 when
-  // navigating between pages). The saved preference is applied in a
-  // useEffect AFTER hydration (client-only).
-  const [viewMode, setViewMode] = useState<"table" | "card">("table");
-  useEffect(() => {
+  // We initialize from the client preference on first render (NOT a stable
+  // "table") so a mobile user in card view sees CARDS from the very first
+  // paint. The server renders "table" (it can't read localStorage/viewport);
+  // to avoid a React #418 hydration crash from that intentional mismatch, the
+  // grid/table container below has `suppressHydrationWarning` — React keeps
+  // the client's correct view and only warns.
+  const [viewMode, setViewMode] = useState<"table" | "card">(() => {
+    if (typeof window === "undefined") return "table"; // server
     try {
       const saved = localStorage.getItem("jobseek:matches-view");
-      if (saved === "card" || saved === "table") {
-        setViewMode(saved);
-        return;
-      }
+      if (saved === "card" || saved === "table") return saved;
     } catch {
       // non-fatal
     }
-    // First visit: default by screen width (mobile → cards, desktop → table).
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
-      setViewMode("card");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return window.innerWidth < 768 ? "card" : "table";
+  });
 
   const changeViewMode = (mode: "table" | "card") => {
     setViewMode(mode);
@@ -311,7 +305,13 @@ export default function FitFilters({
       </div>
 
       {/* Grid / Table */}
-      {filtered.length === 0 ? (
+      {/* suppressHydrationWarning: the card/table choice is read from
+          localStorage/viewport on the client, which may differ from the
+          server's "table" default. This container reconciles that so a
+          mobile user in card view sees CARDS immediately (no table→card
+          flash) without a hydration crash. */}
+      <div suppressHydrationWarning>
+        {filtered.length === 0 ? (
         <div className="text-center py-20 text-zinc-400 dark:text-zinc-500">
           <svg
             className="w-10 h-10 mx-auto mb-3 opacity-40"
@@ -427,6 +427,7 @@ export default function FitFilters({
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 }
