@@ -1,6 +1,6 @@
 "use client";
 
-import JobCard, { Job } from "@/components/JobCard";
+import JobCard, { Job, JobListItem } from "@/components/JobCard";
 import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
@@ -44,7 +44,7 @@ function FilterBar({
         onClick={() => onChange("All")}
         aria-pressed={active === "All"}
         whileTap={{ scale: 0.95 }}
-        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 ${
           active === "All"
             ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900 border-transparent"
             : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-500"
@@ -61,7 +61,7 @@ function FilterBar({
             onClick={() => onChange(opt)}
             aria-pressed={isActive}
             whileTap={{ scale: 0.95 }}
-            className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+            className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 ${
               isActive
                 ? custom
                   ? `${custom} border-transparent`
@@ -87,7 +87,7 @@ const SOURCE_COLORS: Record<string, string> = {
 };
 
 interface FitFiltersProps {
-  jobs: Job[];
+  jobs: (Job | JobListItem)[];
   emptyMessage: string;
   emptyIcon?: React.ReactNode;
 }
@@ -225,7 +225,7 @@ export default function FitFilters({
           <button
             onClick={() => setViewMode("table")}
             aria-pressed={viewMode === "table"}
-            className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${viewMode === "table" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
+            className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${viewMode === "table" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
             aria-label="Table view"
           >
             <svg
@@ -245,7 +245,7 @@ export default function FitFilters({
           <button
             onClick={() => setViewMode("card")}
             aria-pressed={viewMode === "card"}
-            className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${viewMode === "card" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
+            className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${viewMode === "card" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
             aria-label="Card view"
           >
             <svg

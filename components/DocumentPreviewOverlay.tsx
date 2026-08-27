@@ -433,7 +433,7 @@ export default function DocumentPreviewOverlay({
         {/* Top navigation bar — switch between VERSIONS of this document */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 sm:px-6 py-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 bg-white dark:bg-zinc-900">
           <div className="flex items-center gap-1 min-w-0">
-            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mr-2 whitespace-nowrap">
+            <span className="text-sm font-semibold text-violet-700 dark:text-violet-400 mr-2 whitespace-nowrap">
               {type === "resume" ? "Tailored Resume" : "Cover Letter"}
             </span>
             {/* Version nav — ALWAYS shown (even with one version) so the user
@@ -450,13 +450,13 @@ export default function DocumentPreviewOverlay({
                       disabled={v.status === "building"}
                       onClick={() => setActiveIdx(i)}
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-wait ${isActive
-                          ? "bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
+                          ? "bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800"
                           : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-transparent"}`}
                     >
                       {v.label}
                       {v.status === "building" && (
                         <DotLoader
-                          dotClassName="bg-indigo-400"
+                          dotClassName="bg-violet-400"
                           className="scale-50 origin-center"
                         />
                       )}
@@ -582,8 +582,8 @@ export default function DocumentPreviewOverlay({
         <div className="flex-1 min-h-0 overflow-auto bg-white dark:bg-zinc-900">
           {isActiveBuilding ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-center px-6">
-              <DotLoader dotClassName="bg-indigo-500" />
-              <p className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+              <DotLoader dotClassName="bg-violet-500" />
+              <p className="text-sm font-medium text-violet-700 dark:text-violet-300">
                 {latestBuilding?.refinement
                   ? "Fine-tuning your document…"
                   : type === "resume"
@@ -635,7 +635,7 @@ export default function DocumentPreviewOverlay({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
                   Fine-tune{" "}
-                  <span className="text-indigo-600 dark:text-indigo-400">
+                  <span className="text-violet-600 dark:text-violet-400">
                     {active?.label ?? ""}
                   </span>{" "}
                   → creates v{(active?.version ?? 0) + 1}
@@ -667,7 +667,7 @@ export default function DocumentPreviewOverlay({
                       ? "e.g. Emphasize my document processing and Excel skills; keep it to one page."
                       : "e.g. Make it more concise and professional; focus on my administrative experience."
                   }
-                  className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 pb-8 pr-24 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 resize-none disabled:opacity-60"
+                  className="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 pb-8 pr-24 text-sm text-zinc-800 dark:text-zinc-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 resize-none disabled:opacity-60"
                 />
                 {/* AI-assist: rewrite the note into a clearer instruction and
                     REPLACE the textarea content (bottom-right corner). */}
@@ -724,7 +724,7 @@ export default function DocumentPreviewOverlay({
                 <button
                   onClick={handleFineTune}
                   disabled={requesting || isActiveBuilding}
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white transition-colors disabled:opacity-50"
                 >
                   {requesting ? (
                     <>
@@ -754,7 +754,7 @@ export default function DocumentPreviewOverlay({
                   setFineTuneError(null);
                 }}
                 disabled={!active || active.status !== "completed"}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 <svg
                   className="w-4 h-4"

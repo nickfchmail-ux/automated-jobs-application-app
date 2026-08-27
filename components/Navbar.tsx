@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSelector } from "react-redux";
 
+import ThemeToggle from "@/components/ThemeToggle";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CloseIcon from "@mui/icons-material/Close";
@@ -17,7 +18,6 @@ import SearchIcon from "@mui/icons-material/Search";
 import TuneIcon from "@mui/icons-material/Tune";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
-import ThemeToggle from "@/components/ThemeToggle";
 
 type NavItem = {
   href: string;
@@ -218,7 +218,7 @@ export default function Navbar() {
   );
 
   const shell = (
-    <div className="h-full flex flex-col bg-[var(--accent-soft)] border-r border-[var(--line)]">
+    <div className="h-full flex flex-col bg-[var(--surface)] border-r border-[var(--line)]">
       {/* Brand — business logo, full sidebar width */}
       <div className="px-4 pt-5 pb-2">
         <Link href="/overview" className="block shrink-0">
@@ -264,8 +264,8 @@ export default function Navbar() {
       </motion.aside>
 
       {/* Mobile top bar */}
-      <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)]">
-        <div className="flex items-center justify-between pl-0 pr-2 h-12">
+      <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)] safe-top">
+        <div className="flex items-center justify-between pl-2 pr-2 h-12">
           <Link href="/overview" className="flex items-stretch h-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -320,7 +320,7 @@ export default function Navbar() {
             <CloseIcon fontSize="small" />
           </IconButton>
           {shell}
-        </div>
+        </div>{" "}
       </Drawer>
     </>
   );

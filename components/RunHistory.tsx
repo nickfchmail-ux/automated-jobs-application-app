@@ -183,7 +183,7 @@ export default function RunHistory() {
               initial={{ opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
-              className="px-5 py-3 flex items-center justify-between gap-3"
+              className="px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3"
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
@@ -194,7 +194,7 @@ export default function RunHistory() {
                   {run.createdAt ? ` · ${timeAgo(run.createdAt)}` : ""}
                 </p>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
+              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 w-full sm:w-auto">
                 {/* Headline: how many new/saved */}
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">
                   {saved > 0 && (

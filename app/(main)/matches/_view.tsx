@@ -1,6 +1,6 @@
 import FitFilters from "@/components/FitFilters";
-import type { Job } from "@/components/JobCard";
-import { supabase } from "@/lib/supabase";
+import type { JobListItem } from "@/components/JobCard";
+import { getJobsByFit } from "@/lib/data-services";
 import Link from "next/link";
 
 type MatchesViewProps = {
@@ -20,27 +20,19 @@ export default async function MatchesView({
   userId,
   active,
 }: MatchesViewProps) {
-  let fitJobs: Job[] = [];
-  let notFitJobs: Job[] = [];
+  let fitJobs: JobListItem[] = [];
+  let notFitJobs: JobListItem[] = [];
   try {
+    // getJobsByFit is React.cache()-memoized per request and uses the
+    // projected JOBS_LIST_SELECT — NOT `select("*")` (heavy detail columns
+    // like raw_description/cover_letter are never rendered on lists, and
+    // fetching them for every row was a major Supabase exhaustor).
     const [fit, notFit] = await Promise.all([
-      supabase
-        .from("jobs")
-        .select("*")
-        .eq("fit", true)
-        .eq("user_id", userId)
-        .or("interested_in.is.null,interested_in.eq.true"),
-      supabase
-        .from("jobs")
-        .select("*")
-        .eq("fit", false)
-        .eq("user_id", userId)
-        .or("interested_in.is.null,interested_in.eq.true"),
+      getJobsByFit({ userId, fit: true }),
+      getJobsByFit({ userId, fit: false }),
     ]);
-    if (fit.error) console.error("[Matches] fit error:", fit.error);
-    if (notFit.error) console.error("[Matches] notFit error:", notFit.error);
-    fitJobs = (fit.data as Job[]) ?? [];
-    notFitJobs = (notFit.data as Job[]) ?? [];
+    fitJobs = (fit as JobListItem[] | null) ?? [];
+    notFitJobs = (notFit as JobListItem[] | null) ?? [];
   } catch (e) {
     console.error("[Matches] error:", e);
   }

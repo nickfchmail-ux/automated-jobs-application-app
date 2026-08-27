@@ -10,6 +10,7 @@ You are the **Realtime Streaming Agent** for JobSeek. You own how live data reac
 ## Load These Skills First
 
 - `realtime-architecture` — the funnel/streaming architecture in this repo
+- `supabase-efficiency` — the verified Supabase burners + fixes (esp. filtering Realtime channels in the subscription, not after delivery)
 - `scraping-api-integration` — the sibling scraping backend (docs-first, source-of-truth tracking)
 - `jobseek-project-conventions` — project facts
 - `third-party-skills` — the `npx skills` marketplace (check for realtime/socket.io skills)

@@ -118,28 +118,30 @@ export function useRealtimeRun(enabled = true) {
       setSupabaseSession(token);
       const sb = getSupabaseBrowser();
 
+      // The `jobs` channel is managed SEPARATELY (see the runId-keyed effect
+      // below) so we can push a server-side `filter` and only receive the
+      // ACTIVE run's rows — not every change to every job the user owns.
+      // Without that filter, every evaluator write on any job was delivered
+      // over the websocket (Realtime message flood → rate limits → missed
+      // updates → Supabase exhaustion).
+      const pipelineFilter = runIdRef.current
+        ? `id=eq.${runIdRef.current}`
+        : undefined;
       channel = sb
-        .channel("jobs-live")
+        .channel("jobs-meta")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "jobs" },
-          (payload) => {
-            const row = payload.new as Partial<LiveJobRow>;
-            if (!row?.id) return;
-            // Only stream rows belonging to the active run (if one is set)
-            if (
-              runIdRef.current &&
-              row.pipeline_run_id &&
-              row.pipeline_run_id !== runIdRef.current
-            ) {
-              return;
-            }
-            dispatch(runJobUpserted(row as LiveJobRow));
+          {
+            event: "*",
+            schema: "public",
+            table: "pipeline_runs",
+            ...(pipelineFilter ? { filter: pipelineFilter } : {}),
+          } as {
+            event: "*";
+            schema: "public";
+            table: "pipeline_runs";
+            filter?: string;
           },
-        )
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "pipeline_runs" },
           (payload) => {
             const row = payload.new as {
               id?: string;
@@ -163,7 +165,22 @@ export function useRealtimeRun(enabled = true) {
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "evaluation_runs" },
+          {
+            event: "*",
+            schema: "public",
+            table: "evaluation_runs",
+            // Evaluation progress streams for the active run's batches only —
+            // account-wide evals are handled by the socket `stats` event, so
+            // this channel is a per-run fallback (RLS still scopes to user).
+            ...(runIdRef.current
+              ? { filter: `pipeline_run_id=eq.${runIdRef.current}` }
+              : {}),
+          } as {
+            event: "*";
+            schema: "public";
+            table: "evaluation_runs";
+            filter?: string;
+          },
           (payload) => {
             const row = payload.new as EvaluationRunRow | null;
             if (!row?.id) return;
@@ -175,7 +192,30 @@ export function useRealtimeRun(enabled = true) {
         )
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "generated_resumes" },
+          { event: "INSERT", schema: "public", table: "generated_resumes" },
+          (payload) => {
+            const row = payload.new as {
+              job_id?: string;
+              status?: string;
+              resume_url?: string | null;
+              pdf_url?: string | null;
+              error?: string | null;
+            };
+            if (!row?.job_id) return;
+            dispatch(
+              runJobUpserted({
+                id: row.job_id,
+                resume_status: row.status ?? null,
+                resume_url: row.resume_url ?? null,
+                resume_pdf_url: row.pdf_url ?? null,
+                resume_error: row.error ?? null,
+              } as LiveJobRow),
+            );
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "generated_resumes" },
           (payload) => {
             const row = payload.new as {
               job_id?: string;
@@ -393,6 +433,69 @@ export function useRealtimeRun(enabled = true) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
+
+  // ── Jobs channel: server-side filtered by the ACTIVE run ──────────
+  // The single biggest Supabase Realtime burner was an UNFILTERED
+  // `postgres_changes` subscription on `jobs` (event "*") that delivered
+  // EVERY change to EVERY job the user owns, then filtered client-side after
+  // delivery. On a busy account every evaluator write (fit / fit_score /
+  // resume_status on any job) was pushed over the websocket → message flood →
+  // Realtime rate limits → missed updates → exhaustion.
+  //
+  // This effect owns the `jobs` channel and REBUILDS it when `runId` changes
+  // so the filter is pushed to the server (`pipeline_run_id=eq.<runId>`). It
+  // only listens for INSERT + UPDATE (new rows for the stream + status/fit
+  // updates) — DELETEs are not rendered. When no run is active the channel
+  // subscribes to INSERTs for the user's rows only (RLS-scoped), which is
+  // essentially silent because writes happen under an active run.
+  useEffect(() => {
+    if (!enabled) return;
+    const sb = getSupabaseBrowser();
+    let jobsChannel: ReturnType<
+      ReturnType<typeof getSupabaseBrowser>["channel"]
+    > | null = null;
+    let disposed = false;
+
+    const runFilter = runId ? `pipeline_run_id=eq.${runId}` : undefined;
+
+    const handleJobChange = (payload: { new: Partial<LiveJobRow> }): void => {
+      if (disposed) return;
+      const row = payload.new as Partial<LiveJobRow>;
+      if (!row?.id) return;
+      // Belt-and-braces: even with the server filter, never surface a row
+      // from a different run into the active stream.
+      if (runId && row.pipeline_run_id && row.pipeline_run_id !== runId) {
+        return;
+      }
+      dispatch(runJobUpserted(row as LiveJobRow));
+    };
+
+    const baseFilter = {
+      schema: "public" as const,
+      table: "jobs" as const,
+      ...(runFilter ? { filter: runFilter } : {}),
+    };
+
+    jobsChannel = sb
+      .channel("jobs-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", ...baseFilter },
+        handleJobChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", ...baseFilter },
+        handleJobChange,
+      )
+      .subscribe();
+
+    return () => {
+      disposed = true;
+      if (jobsChannel) sbChannelCleanup(jobsChannel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, enabled]);
 
   // ── Hydrate effect: when a run is queued, seed status + load jobs ──
   useEffect(() => {

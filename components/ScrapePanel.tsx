@@ -156,6 +156,16 @@ export default function ScrapePanel({
         } else if (/rate|too many|busy/i.test(result.error)) {
           friendly =
             "The job boards are busy right now — we couldn't get through. Please try again in a moment.";
+        } else if (
+          /could not start|took too long|timed? ?out|network|ECONN|socket|fetch failed|connect/i.test(
+            result.error,
+          )
+        ) {
+          // The search service (Azure function) is up but couldn't reach the
+          // job boards — a known transient egress/proxy issue. Be honest and
+          // actionable: tell the user it's on our side and the retry path.
+          friendly =
+            "We couldn't reach the job boards this time — the search service is having a temporary connection issue. Your saved jobs are safe. Try again in a minute.";
         } else {
           friendly =
             "Something went wrong. Your saved jobs are safe — please try again.";
@@ -228,9 +238,9 @@ export default function ScrapePanel({
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-violet-50 dark:bg-violet-950 flex items-center justify-center">
             <svg
-              className="w-4 h-4 text-blue-600 dark:text-blue-400"
+              className="w-4 h-4 text-violet-600 dark:text-violet-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -284,7 +294,7 @@ export default function ScrapePanel({
             </p>
             <a
               href="/profile"
-              className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
             >
               Upgrade for more searches →
             </a>
@@ -306,7 +316,7 @@ export default function ScrapePanel({
                   onChange={(e) => setKeyword(e.target.value)}
                   placeholder="e.g. web developer, frontend, react"
                   disabled={isRunning}
-                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 transition"
+                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 transition"
                 />
               </div>
 
@@ -322,7 +332,7 @@ export default function ScrapePanel({
                   value={Math.min(pages, maxPages)}
                   onChange={(e) => setPages(Number(e.target.value))}
                   disabled={isRunning || maxPages <= 1}
-                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition"
                   title={
                     maxPages <= 1
                       ? "1 page on your plan — upgrade to Pro for more"
@@ -357,7 +367,7 @@ export default function ScrapePanel({
                       ? "You've used all your searches for this plan. Upgrade on your Profile page for more."
                       : undefined
                   }
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
                 >
                   {isRunning ? (
                     <>
@@ -430,12 +440,12 @@ export default function ScrapePanel({
                             ? "Indeed is temporarily unavailable (all proxy keys exhausted today). Try again tomorrow."
                             : undefined
                       }
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
                         isIndeedDisabled
                           ? "bg-zinc-50 dark:bg-zinc-800 border-dashed border-zinc-300 dark:border-zinc-600 text-zinc-400 dark:text-zinc-500 opacity-60 cursor-not-allowed"
                           : on
-                            ? "bg-indigo-600 border-transparent text-white"
-                            : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-indigo-300 dark:hover:border-indigo-600"
+                            ? "bg-violet-600 border-transparent text-white"
+                            : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-violet-300 dark:hover:border-violet-600"
                       }`}
                     >
                       {b.label}
@@ -450,8 +460,8 @@ export default function ScrapePanel({
               </div>
               {indeedUnavailable && (
                 <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-                  Indeed is temporarily unavailable — the search proxy is out
-                  of credits for today. It&apos;ll be back tomorrow.
+                  Indeed is temporarily unavailable — the search proxy is out of
+                  credits for today. It&apos;ll be back tomorrow.
                 </p>
               )}
 
@@ -471,7 +481,7 @@ export default function ScrapePanel({
                     new listings.{" "}
                     <a
                       href="/profile"
-                      className="font-semibold text-indigo-600 dark:text-indigo-400 underline underline-offset-2 hover:opacity-80"
+                      className="font-semibold text-violet-600 dark:text-violet-400 underline underline-offset-2 hover:opacity-80"
                     >
                       Upgrade
                     </a>{" "}
