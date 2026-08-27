@@ -9,7 +9,11 @@ import PageSpinner from "./PageSpinner";
  * page fetches. The parent `(main)/loading.tsx` uses this with a generic
  * label as the fallback for any nested route without its own loader.
  */
-export default function RouteLoading({ label = "Loading…" }: { label?: string }) {
+export default function RouteLoading({
+  label = "Loading…",
+}: {
+  label?: string;
+}) {
   return (
     <div className="min-h-screen bg-[var(--paper)] dark:bg-zinc-950">
       {/* Navbar skeleton */}

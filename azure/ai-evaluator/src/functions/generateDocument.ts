@@ -10,6 +10,11 @@ import {
 } from "../lib/documentVersions.js";
 import { enqueueDocumentRequest } from "../lib/serviceBus.js";
 import { getSupabase } from "../lib/supabase.js";
+import {
+  consumeUsage,
+  refundUsage,
+  UsageLimitReachedError,
+} from "../lib/usage.js";
 import type {
   DocumentRequestMessage,
   DocumentTriggerResponse,
@@ -64,10 +69,15 @@ export const generateDocument: HttpHandler = async (
   const jobId = body?.jobId;
   const userId = body?.userId;
   const type = body?.type;
-  const refinement =
-    typeof body?.refinement === "string" && body.refinement.trim()
-      ? body.refinement.trim().slice(0, 2000)
-      : undefined;
+  // Cap the refinement note at 300 WORDS so a huge paste can't inflate AI
+  // token costs on the resume/cover-letter regeneration.
+  const refinement = (() => {
+    const raw =
+      typeof body?.refinement === "string" ? body.refinement.trim() : "";
+    if (!raw) return undefined;
+    const words = raw.split(/\s+/).filter(Boolean);
+    return words.slice(0, 300).join(" ").slice(0, 2000);
+  })();
   const version =
     typeof body?.version === "number" &&
     Number.isInteger(body.version) &&
@@ -192,6 +202,29 @@ export const generateDocument: HttpHandler = async (
         .eq("user_id", userId);
     }
 
+    // ── AUTHORITATIVE USAGE ENFORCEMENT ───────────────────────
+    // Only reached when we're ACTUALLY generating (all idempotent
+    // short-circuits returned above). The backend deducts the fine-tune quota
+    // HERE — the single writer. If out of quota, reject before any work.
+    let usageId: string | null = null;
+    try {
+      const usageType =
+        type === "resume" ? "fine_tune_resume" : "fine_tune_cover_letter";
+      const usage = await consumeUsage(userId, usageType);
+      if (!usage.ok) {
+        if (usage.reason === "limit_reached") {
+          return json({ error: `LIMIT_REACHED: ${usage.message}` }, 402);
+        }
+        return json({ error: usage.message }, 400);
+      }
+      usageId = usage.id ?? null;
+    } catch (e) {
+      if (e instanceof UsageLimitReachedError) {
+        return json({ error: `LIMIT_REACHED: ${e.message}` }, 402);
+      }
+      throw e;
+    }
+
     // Mark the per-version row building so the overlay shows the spinner on
     // the correct tab over Realtime (durable across refresh).
     await markDocumentVersionBuilding({
@@ -214,7 +247,19 @@ export const generateDocument: HttpHandler = async (
       basedOn,
       ...(refinement ? { refinement } : {}),
     };
-    await enqueueDocumentRequest(message);
+    try {
+      await enqueueDocumentRequest(message);
+    } catch (enqErr) {
+      // The fine-tune quota was already deducted — refund it since the
+      // message never got enqueued (nothing was actually generated).
+      if (usageId != null) {
+        await refundUsage(
+          userId,
+          type === "resume" ? "fine_tune_resume" : "fine_tune_cover_letter",
+        ).catch(() => {});
+      }
+      throw enqErr;
+    }
 
     const response: DocumentTriggerResponse = {
       ok: true,

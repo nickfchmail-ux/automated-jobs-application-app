@@ -1,7 +1,7 @@
 "use server";
 
-import { consumeEntitlement } from "@/lib/entitlements";
 import { getUserId } from "@/lib/auth";
+import { consumeEntitlement } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
 import type {
   EvaluateResponse,

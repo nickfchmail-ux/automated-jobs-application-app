@@ -1,11 +1,14 @@
 "use client";
 
+import { getEntitlementGatesAction } from "@/app/actions/entitlements";
 import { startScrapeAction } from "@/app/actions/scrape";
 import LiveRunCard from "@/components/LiveRunCard";
 import { useToast } from "@/components/Toast";
 import { useRealtimeRun } from "@/hooks/useRealtimeRun";
+import { hasQuota, type EntitlementSummary } from "@/lib/entitlements-shared";
 import {
   runQueued,
+  runReset,
   runStarting,
   runSucceeded,
 } from "@/state/global/slice/runSlice";
@@ -19,12 +22,31 @@ const BOARD_OPTIONS: { value: string; label: string }[] = [
   { value: "ctgoodjobs", label: "CTgoodjobs" },
   { value: "offertoday", label: "OfferToday" },
   { value: "linkedin", label: "LinkedIn" },
+  { value: "indeed", label: "Indeed" },
 ];
 
-export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
+export default function ScrapePanel({
+  hasResume,
+  maxPages = 1,
+  indeedEnabled = true,
+  maxResultsPerBoard,
+  indeedUnavailable = false,
+}: {
+  hasResume: boolean;
+  /** Max pages per search allowed by the plan (Standard=1, Pro/Admin=∞). */
+  maxPages?: number;
+  /** Whether Indeed is enabled on this plan (Standard=false). */
+  indeedEnabled?: boolean;
+  /** Max results kept per job board (Free=5, Standard=10, Pro/Admin=∞). */
+  maxResultsPerBoard?: number;
+  /** True when every ScraperAPI key is exhausted today → hide Indeed. */
+  indeedUnavailable?: boolean;
+}) {
   const dispatch = useDispatch();
   const toast = useToast();
-  const { phase, jobStream } = useSelector((s: RootState) => s.run);
+  const { phase, jobStream, boardsDetail } = useSelector(
+    (s: RootState) => s.run,
+  );
   const [keyword, setKeyword] = useState("");
   const [pages, setPages] = useState(1);
   const [boards, setBoards] = useState<string[]>(() => [
@@ -39,6 +61,32 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
     pages: number;
     boards: string[];
   } | null>(null);
+
+  // Entitlement gates — disable the search button when the user is out of
+  // search quota. The backend enforces authoritatively; this is UI polish.
+  const [entitlements, setEntitlements] = useState<EntitlementSummary | null>(
+    null,
+  );
+  // Tracks whether the async entitlement check has resolved — until it does
+  // we render a loading state (NOT the form) so an exhausted user never sees
+  // the search input flash before the "used up your searches" card appears.
+  const [gatesLoaded, setGatesLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    getEntitlementGatesAction().then((s) => {
+      if (!alive) return;
+      setEntitlements(s);
+      setGatesLoaded(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // Only mark exhausted once the gates have loaded AND quota is genuinely 0.
+  const searchExhausted =
+    gatesLoaded &&
+    !!entitlements &&
+    !hasQuota(entitlements, "search", keyword.trim() || null);
 
   // Live connection: socket.io funnel + Supabase Realtime job rows
   useRealtimeRun(true);
@@ -72,6 +120,22 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
     e.preventDefault();
     if (!keyword.trim()) return;
     setError(null);
+
+    // ── Synchronous pre-check ─────────────────────────────────
+    // If the entitlements are already loaded and the user is out of quota,
+    // DON'T enter the "Getting ready…" run state at all — the form isn't even
+    // rendered in this case (the exhausted card replaces it), but guard here
+    // too so a stale click can't launch a phantom run.
+    if (
+      entitlements &&
+      !hasQuota(entitlements, "search", keyword.trim() || null)
+    ) {
+      setError(
+        "You've used up your searches for this plan. Upgrade on your Profile page for more.",
+      );
+      return;
+    }
+
     dispatch(runStarting({ keyword: keyword.trim(), boards }));
 
     startTransition(async () => {
@@ -98,6 +162,9 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
         }
         setError(friendly);
         toast.error("Search didn't start", friendly);
+        // Roll the run state back to idle so the phantom "Getting ready…" /
+        // "Contacting the job boards…" card disappears immediately.
+        dispatch(runReset());
         return;
       }
 
@@ -119,22 +186,36 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
     handleSubmit({ preventDefault: () => {} } as React.FormEvent);
   }
 
-  /** Re-run the last submitted search (same keyword/boards) — used when a run
-   *  is stuck because one board couldn't be searched. */
+  /** Re-run ONLY the boards that failed/blocked in the last search — used when
+   *  a run is stuck because one board couldn't be searched. Does NOT consume a
+   *  new search (retry flag); the backend counts quota only if it succeeds. */
   function handleRetrySearch() {
     if (!lastSearch) return;
     setError(null);
-    dispatch(
-      runStarting({ keyword: lastSearch.keyword, boards: lastSearch.boards }),
-    );
+
+    // Target only the boards that didn't complete (failed/blocked), so we
+    // don't re-fetch boards that already succeeded (wasted proxy calls) and
+    // don't re-insert duplicates. Falls back to all original boards if the
+    // per-board stage data isn't available.
+    const failedBoards = Object.entries(boardsDetail)
+      .filter(([, s]) => s?.stage === "failed" || s?.stage === "blocked")
+      .map(([board]) => board);
+    const retryBoards =
+      failedBoards.length > 0 ? failedBoards : [...lastSearch.boards];
+
+    dispatch(runStarting({ keyword: lastSearch.keyword, boards: retryBoards }));
     startTransition(async () => {
       const result = await startScrapeAction({
         keyword: lastSearch.keyword,
         pages: lastSearch.pages,
-        boards: lastSearch.boards,
+        boards: retryBoards,
+        retry: true,
       });
       if (!result.ok) {
         setError("We couldn't retry the search. Please try again in a moment.");
+        // Roll the run state back so a failed retry doesn't leave the UI
+        // stuck on "Getting ready… / Contacting the job boards…".
+        dispatch(runReset());
         return;
       }
       dispatch(runQueued({ runId: result.runId, keyword: lastSearch.keyword }));
@@ -172,168 +253,282 @@ export default function ScrapePanel({ hasResume }: { hasResume: boolean }) {
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <label
-                htmlFor="keyword"
-                className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5"
+        {/* Render the search form IMMEDIATELY so the card appears fast. The
+            "used up your searches" card only replaces it once the entitlement
+            check resolves AND the user is genuinely out of quota — so normal
+            users never wait on a skeleton, and only exhausted users see the
+            swap (fast, since the check is quick for them). */}
+        {searchExhausted ? (
+          <div className="px-6 py-8 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-950 flex items-center justify-center mb-3">
+              <svg
+                className="w-6 h-6 text-amber-600 dark:text-amber-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
               >
-                Keyword
-              </label>
-              <input
-                id="keyword"
-                type="text"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="e.g. web developer, frontend, react"
-                disabled={isRunning}
-                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 transition"
-              />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                />
+              </svg>
             </div>
-
-            <div className="sm:w-28">
-              <label
-                htmlFor="pages"
-                className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5"
-              >
-                Pages
-              </label>
-              <select
-                id="pages"
-                value={pages}
-                onChange={(e) => setPages(Number(e.target.value))}
-                disabled={isRunning}
-                className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 transition"
-              >
-                {[1, 2, 3, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n} {n === 1 ? "page" : "pages"}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="sm:self-end">
-              <button
-                type="submit"
-                disabled={isRunning || !keyword.trim() || !hasResume}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-              >
-                {isRunning ? (
-                  <>
-                    <svg
-                      className="w-3.5 h-3.5 animate-spin motion-reduce:hidden"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Finding jobs…
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="w-3.5 h-3.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                    Find me jobs
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Board toggles */}
-          <div>
-            <span className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
-              Job boards
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {BOARD_OPTIONS.map((b) => {
-                const on = boards.includes(b.value);
-                return (
-                  <button
-                    key={b.value}
-                    type="button"
-                    onClick={() => toggleBoard(b.value)}
-                    disabled={isRunning}
-                    aria-pressed={on}
-                    className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                      on
-                        ? "bg-indigo-600 border-transparent text-white"
-                        : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-indigo-300 dark:hover:border-indigo-600"
-                    }`}
-                  >
-                    {b.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* No resume warning */}
-          {!hasResume && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              You need to upload your resume before searching for matches.{" "}
-              <a
-                href="/profile"
-                className="font-semibold underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-              >
-                Upload resume →
-              </a>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              You&apos;ve used up your searches
+            </h3>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto">
+              Your plan includes 1 search in total. Once you&apos;ve used it,
+              it&apos;s gone for good unless you upgrade.
             </p>
-          )}
-
-          {/* Error state — warm copy, never jargon */}
-          {error && (
-            <div
-              role="alert"
-              className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 flex items-center justify-between gap-3"
+            <a
+              href="/profile"
+              className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             >
-              <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
-              <button
-                onClick={handleRetry}
-                className="shrink-0 text-xs font-semibold text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg px-3 py-1.5 hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
-              >
-                Retry
-              </button>
+              Upgrade for more searches →
+            </a>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <label
+                  htmlFor="keyword"
+                  className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5"
+                >
+                  Keyword
+                </label>
+                <input
+                  id="keyword"
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  placeholder="e.g. web developer, frontend, react"
+                  disabled={isRunning}
+                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 transition"
+                />
+              </div>
+
+              <div className="sm:w-28">
+                <label
+                  htmlFor="pages"
+                  className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5"
+                >
+                  Pages
+                </label>
+                <select
+                  id="pages"
+                  value={Math.min(pages, maxPages)}
+                  onChange={(e) => setPages(Number(e.target.value))}
+                  disabled={isRunning || maxPages <= 1}
+                  className="w-full rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  title={
+                    maxPages <= 1
+                      ? "1 page on your plan — upgrade to Pro for more"
+                      : undefined
+                  }
+                >
+                  {[1, 2, 3, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n} {n === 1 ? "page" : "pages"}
+                    </option>
+                  ))}
+                </select>
+                {maxPages <= 1 && (
+                  <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                    Your plan allows 1 page per search — upgrade to Pro for
+                    multi-page.
+                  </p>
+                )}
+              </div>
+
+              <div className="sm:self-end">
+                <button
+                  type="submit"
+                  disabled={
+                    isRunning ||
+                    !keyword.trim() ||
+                    !hasResume ||
+                    searchExhausted
+                  }
+                  title={
+                    searchExhausted
+                      ? "You've used all your searches for this plan. Upgrade on your Profile page for more."
+                      : undefined
+                  }
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-5 py-2.5 shadow-sm hover:shadow transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                >
+                  {isRunning ? (
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5 animate-spin motion-reduce:hidden"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                      Finding jobs…
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                      Find me jobs
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-          )}
-        </form>
+
+            {/* Board toggles */}
+            <div>
+              <span className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
+                Job boards
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {BOARD_OPTIONS.filter(
+                  (b) => !(b.value === "indeed" && indeedUnavailable),
+                ).map((b) => {
+                  const isIndeedDisabled =
+                    b.value === "indeed" && !indeedEnabled;
+                  const on = boards.includes(b.value);
+                  return (
+                    <button
+                      key={b.value}
+                      type="button"
+                      onClick={() => toggleBoard(b.value)}
+                      disabled={isRunning || isIndeedDisabled}
+                      aria-pressed={on}
+                      title={
+                        isIndeedDisabled
+                          ? "Indeed isn't available on your plan — upgrade to Pro"
+                          : b.value === "indeed"
+                            ? "Indeed is temporarily unavailable (all proxy keys exhausted today). Try again tomorrow."
+                            : undefined
+                      }
+                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                        isIndeedDisabled
+                          ? "bg-zinc-50 dark:bg-zinc-800 border-dashed border-zinc-300 dark:border-zinc-600 text-zinc-400 dark:text-zinc-500 opacity-60 cursor-not-allowed"
+                          : on
+                            ? "bg-indigo-600 border-transparent text-white"
+                            : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-indigo-300 dark:hover:border-indigo-600"
+                      }`}
+                    >
+                      {b.label}
+                      {isIndeedDisabled && (
+                        <span className="text-[10px] uppercase tracking-wide">
+                          · Locked
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {indeedUnavailable && (
+                <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+                  Indeed is temporarily unavailable — the search proxy is out
+                  of credits for today. It&apos;ll be back tomorrow.
+                </p>
+              )}
+
+              {/* Per-board result cap */}
+              {typeof maxResultsPerBoard === "number" &&
+                maxResultsPerBoard > 0 && (
+                  <p className="mt-2 text-[11px] text-zinc-400 dark:text-zinc-500">
+                    Your plan returns up to{" "}
+                    <span className="font-semibold text-zinc-500 dark:text-zinc-400">
+                      {maxResultsPerBoard} results per board
+                    </span>{" "}
+                    per search — searching again with the same keyword reveals
+                    the next{" "}
+                    <span className="font-semibold text-zinc-500 dark:text-zinc-400">
+                      {maxResultsPerBoard}
+                    </span>{" "}
+                    new listings.{" "}
+                    <a
+                      href="/profile"
+                      className="font-semibold text-indigo-600 dark:text-indigo-400 underline underline-offset-2 hover:opacity-80"
+                    >
+                      Upgrade
+                    </a>{" "}
+                    for more.
+                  </p>
+                )}
+            </div>
+
+            {/* No resume warning */}
+            {!hasResume && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                You need to upload your resume before searching for matches.{" "}
+                <a
+                  href="/profile"
+                  className="font-semibold underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                >
+                  Upload resume →
+                </a>
+              </p>
+            )}
+
+            {/* Error state — warm copy, never jargon */}
+            {error && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 flex items-center justify-between gap-3"
+              >
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  {error}
+                </p>
+                <button
+                  onClick={handleRetry}
+                  className="shrink-0 text-xs font-semibold text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg px-3 py-1.5 hover:bg-red-100 dark:hover:bg-red-900 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          </form>
+        )}
       </div>
 
-      {/* Live run card — only while a search is ACTUALLY running. Once it's
-          done ("Done ✓") or hasn't started, there's nothing meaningful to
-          show — the Match card takes over for results. Hidden during
-          evaluation too (the Match card owns that experience). */}
+      {/* Live run card — while a search is ACTUALLY running OR just failed.
+          On failure it must stay visible so the user sees WHY it failed and
+          can hit Retry — otherwise the error silently vanishes. Also stays
+          visible on completion when nothing new was found, so a "no new
+          jobs" outcome isn't a silent box disappearance. Hidden when idle or
+          a normal completed run (the Match card takes over for results). */}
       {(phase === "queued" ||
         phase === "scraping" ||
         phase === "processing" ||
         phase === "retrying" ||
-        phase === "starting") && <LiveRunCard onRetry={handleRetrySearch} />}
+        phase === "starting" ||
+        phase === "failed" ||
+        (phase === "completed" && jobStream.length === 0)) && (
+        <LiveRunCard onRetry={handleRetrySearch} />
+      )}
     </div>
   );
 }

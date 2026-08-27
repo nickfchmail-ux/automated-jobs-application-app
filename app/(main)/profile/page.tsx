@@ -32,9 +32,7 @@ export default async function ProfilePage() {
         subtitle="Manage your resume — the source the AI scores every job against."
       />
 
-      {entitlements && (
-        <SubscriptionPanel entitlements={entitlements} />
-      )}
+      {entitlements && <SubscriptionPanel entitlements={entitlements} />}
 
       <ResumePanel
         userId={result.userId}

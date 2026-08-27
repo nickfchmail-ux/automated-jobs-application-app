@@ -6,6 +6,11 @@ import {
 } from "@azure/functions";
 import { enqueueEvaluationJobs } from "../lib/serviceBus.js";
 import { getSupabase } from "../lib/supabase.js";
+import {
+  consumeUsage,
+  refundUsage,
+  UsageLimitReachedError,
+} from "../lib/usage.js";
 import type {
   EvaluateJobMessage,
   EvaluateRequest,
@@ -131,6 +136,29 @@ export const evaluate: HttpHandler = async (
       return json({ error: "No saved jobs found for this run yet." }, 404);
     }
 
+    // 4b. ── AUTHORITATIVE USAGE ENFORCEMENT ───────────────────
+    // The backend deducts the evaluation quota HERE (single writer). This is
+    // the real enforcement — the frontend only disables the button. If the
+    // user is out of quota, reject before any work is enqueued.
+    let usageId: string | null = null;
+    try {
+      const usage = await consumeUsage(userId, "evaluation", {
+        searchKey: searchKey ?? null,
+      });
+      if (!usage.ok) {
+        if (usage.reason === "limit_reached") {
+          return json({ error: `LIMIT_REACHED: ${usage.message}` }, 402);
+        }
+        return json({ error: usage.message }, 400);
+      }
+      usageId = usage.id ?? null;
+    } catch (e) {
+      if (e instanceof UsageLimitReachedError) {
+        return json({ error: `LIMIT_REACHED: ${e.message}` }, 402);
+      }
+      throw e;
+    }
+
     // 5. Mark queued up-front so a second click is rejected, then create one
     //    evaluation_runs batch row per keyword and enqueue ONE message per job.
     await sb
@@ -196,7 +224,18 @@ export const evaluate: HttpHandler = async (
       };
     });
 
-    await enqueueEvaluationJobs(messages);
+    try {
+      await enqueueEvaluationJobs(messages);
+    } catch (enqErr) {
+      // The evaluation quota was already deducted — refund it since the
+      // messages never got enqueued (nothing was actually evaluated).
+      if (usageId != null) {
+        await refundUsage(userId, "evaluation", searchKey ?? null).catch(
+          () => {},
+        );
+      }
+      throw enqErr;
+    }
 
     const response: EvaluateResponse = {
       runId,

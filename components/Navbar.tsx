@@ -17,6 +17,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import TuneIcon from "@mui/icons-material/Tune";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
+import ThemeToggle from "@/components/ThemeToggle";
 
 type NavItem = {
   href: string;
@@ -239,6 +240,12 @@ export default function Navbar() {
 
       {/* Footer */}
       <div className="px-3 pb-4 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--ink-faint)]">
+            Theme
+          </span>
+          <ThemeToggle />
+        </div>
         {signOutButton}
       </div>
     </div>
@@ -258,16 +265,17 @@ export default function Navbar() {
 
       {/* Mobile top bar */}
       <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)]">
-        <div className="flex items-center justify-between px-4 py-3">
-          <Link href="/overview" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center text-white font-bold">
-              <span className="text-xs font-display">J</span>
-            </div>
-            <span className="text-sm font-bold text-[var(--ink)] font-display">
-              JobSeek
-            </span>
+        <div className="flex items-center justify-between pl-0 pr-2 h-12">
+          <Link href="/overview" className="flex items-stretch h-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/JobSeek.png"
+              alt="JobSeek"
+              className="h-full w-auto object-contain"
+            />
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <ThemeToggle />
             <button
               onClick={() => go("/search")}
               className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-ink)] text-white text-xs font-semibold px-3 py-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"

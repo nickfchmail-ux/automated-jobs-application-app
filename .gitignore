@@ -52,3 +52,6 @@ azure/ai-evaluator/local.settings.json
 azure/ai-evaluator/dist/
 azure/ai-evaluator/node_modules/
 azure/ai-evaluator/package-lock.json
+
+.vercel
+.env*

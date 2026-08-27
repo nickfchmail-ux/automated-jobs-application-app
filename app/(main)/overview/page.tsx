@@ -313,7 +313,10 @@ export default async function OverviewPage() {
                       Median match
                     </p>
                     <p className="mt-1 font-data text-3xl font-semibold text-[var(--ink)] tabular-nums">
-                      <AnimatedNumber value={salary.medianMonthly} format="salary" />
+                      <AnimatedNumber
+                        value={salary.medianMonthly}
+                        format="salary"
+                      />
                     </p>
                   </div>
                   <div className="rounded-xl bg-[var(--paper-soft)] p-4">
@@ -321,7 +324,10 @@ export default async function OverviewPage() {
                       Average match
                     </p>
                     <p className="mt-1 font-data text-3xl font-semibold text-[var(--ink)] tabular-nums">
-                      <AnimatedNumber value={salary.avgMonthly} format="salary" />
+                      <AnimatedNumber
+                        value={salary.avgMonthly}
+                        format="salary"
+                      />
                     </p>
                   </div>
                 </div>

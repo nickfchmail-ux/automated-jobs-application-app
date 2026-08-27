@@ -7,6 +7,8 @@ import {
   Manrope,
 } from "next/font/google";
 import "./globals.css";
+import { ThemeProvider } from "./theme-provider";
+import { themeInitScript } from "./theme-init";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -57,11 +59,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript() }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${manrope.variable} ${instrumentSerif.variable} ${plexMono.variable} antialiased`}
       >
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

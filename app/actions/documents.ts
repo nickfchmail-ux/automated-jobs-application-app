@@ -1,7 +1,7 @@
 "use server";
 
-import { consumeEntitlement } from "@/lib/entitlements";
 import { getUserId } from "@/lib/auth";
+import { consumeEntitlement } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase";
 import type {
   CoverLetterStatus,
@@ -174,6 +174,21 @@ export async function enhanceRefinementAction(
   const note = refinement.trim();
   if (!note) return { ok: false, error: "Type something to enhance first." };
 
+  // ── Entitlement gate ────────────────────────────────────────
+  // Each Enhance consumes the SAME fine-tune quota as a Regenerate (they
+  // share one pool per document type). Pre-check here to fail fast; the
+  // evaluator is the authoritative enforcer and returns 402 LIMIT_REACHED
+  // if this races a concurrent consume.
+  const entitlement = await consumeEntitlement(
+    type === "resume" ? "fine_tune_resume" : "fine_tune_cover_letter",
+  );
+  if (!entitlement.ok) {
+    if (entitlement.reason === "limit_reached") {
+      return { ok: false, error: `LIMIT_REACHED: ${entitlement.message}` };
+    }
+    return { ok: false, error: entitlement.message };
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
@@ -185,7 +200,7 @@ export async function enhanceRefinementAction(
           "Content-Type": "application/json",
           "x-functions-key": EVALUATOR_HOST_KEY,
         },
-        body: JSON.stringify({ refinement: note, type }),
+        body: JSON.stringify({ userId, refinement: note, type }),
         signal: controller.signal,
         cache: "no-store",
       },
@@ -196,7 +211,8 @@ export async function enhanceRefinementAction(
       const body = await res.json().catch(() => ({}));
       return {
         ok: false,
-        error: body?.error ?? `Server error ${res.status}`,
+        error:
+          body?.error ?? `Server error ${res.status}`,
       };
     }
     const data = await res.json();

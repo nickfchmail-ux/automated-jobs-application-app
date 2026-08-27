@@ -30,8 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": [
-    "node_modules",
-    "azure/ai-evaluator"
-  ]
+  "exclude": ["node_modules", "azure/ai-evaluator"]
 }

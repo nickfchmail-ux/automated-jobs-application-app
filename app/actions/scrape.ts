@@ -1,7 +1,12 @@
 "use server";
 
-import { consumeEntitlement } from "@/lib/entitlements";
 import { getToken, getUserId } from "@/lib/auth";
+import { getScraperApiAvailability } from "@/app/actions/scraperApi";
+import {
+  consumeEntitlement,
+  getLimitsForProfile,
+  getProfile,
+} from "@/lib/entitlements";
 import { fetchWithAuth } from "@/lib/fetchWithAuth";
 import { supabase } from "@/lib/supabase";
 import type {
@@ -36,6 +41,8 @@ export interface StartScrapeParams {
   keyword: string;
   pages?: number;
   boards?: string[];
+  /** True when this is a RETRY of a failed/stuck run — does NOT consume search quota. */
+  retry?: boolean;
 }
 
 export async function startScrapeAction(
@@ -45,15 +52,49 @@ export async function startScrapeAction(
   if (!userId) return { ok: false, error: "Not authenticated." };
 
   // ── Entitlement gate ────────────────────────────────────────
-  // Free users get ONE search per keyword (lifetime). Pro/admin are unlimited.
-  const entitlement = await consumeEntitlement("search", {
-    searchKey: params.keyword,
-  });
-  if (!entitlement.ok) {
-    if (entitlement.reason === "limit_reached") {
-      return { ok: false, error: `LIMIT_REACHED: ${entitlement.message}` };
+  // A RETRY of the same search (recovering a board that failed) does NOT
+  // consume a new search — the user already paid for this keyword. This is
+  // critical for limited users: a transient board timeout must not burn
+  // their only search.
+  if (!params.retry) {
+    const entitlement = await consumeEntitlement("search", {
+      searchKey: params.keyword,
+    });
+    if (!entitlement.ok) {
+      if (entitlement.reason === "limit_reached") {
+        return { ok: false, error: `LIMIT_REACHED: ${entitlement.message}` };
+      }
+      return { ok: false, error: entitlement.message };
     }
-    return { ok: false, error: entitlement.message };
+  }
+
+  // ── Plan capability gate (pages + Indeed) ──────────────────
+  // Standard = 1 page only + Indeed disabled. Pro/admin = multi-page + Indeed.
+  // Additionally, if every ScraperAPI key is exhausted today, Indeed is
+  // dropped server-side too (the backend can't scrape it regardless).
+  const profile = await getProfile(userId);
+  const limits = getLimitsForProfile(profile);
+
+  const requestedPages = params.pages ?? 1;
+  const pages =
+    requestedPages > limits.search.maxPages
+      ? limits.search.maxPages
+      : requestedPages;
+
+  const sa = await getScraperApiAvailability();
+  const boards = (params.boards ?? []).filter(
+    (b) =>
+      !(b === "indeed" && !limits.search.indeedEnabled) &&
+      !(b === "indeed" && !sa.available),
+  );
+
+  if (boards.length === 0) {
+    return {
+      ok: false,
+      error: limits.search.indeedEnabled
+        ? "Select at least one job board to search."
+        : "Indeed isn't available on your plan. Pick another board, or upgrade to Pro.",
+    };
   }
 
   const controller = new AbortController();
@@ -68,10 +109,16 @@ export async function startScrapeAction(
       },
       body: JSON.stringify({
         keyword: params.keyword,
-        pages: params.pages ?? 1,
-        boards: params.boards,
+        pages,
+        boards,
         user_id: userId,
         country_code: "hk",
+        // Per-board result cap from the plan (Free=5, Standard=10, Pro=∞).
+        max_results_per_board: Number.isFinite(limits.search.maxResultsPerBoard)
+          ? limits.search.maxResultsPerBoard
+          : undefined,
+        // Retry flag: skip search-quota deduction on the backend.
+        retry: params.retry ? true : undefined,
       }),
       signal: controller.signal,
       cache: "no-store",

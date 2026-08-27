@@ -296,13 +296,10 @@ export async function getInsights(userId: string): Promise<Insights> {
   const trend: TrendPoint[] = runOrder.slice(0, 8).map(([runId, e], i) => {
     // Human-readable search key: "web_developer" → "Web developer".
     const searchKey = e.searchKey?.trim()
-      ? e.searchKey
-          .replace(/_/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase())
+      ? e.searchKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
       : "";
     return {
-      label:
-        searchKey || (runId === "other" ? "Earlier" : `Run ${i + 1}`),
+      label: searchKey || (runId === "other" ? "Earlier" : `Run ${i + 1}`),
       avgScore: Math.round(
         e.scores.reduce((a, b) => a + b, 0) / Math.max(1, e.scores.length),
       ),
@@ -350,7 +347,12 @@ export async function getInsights(userId: string): Promise<Insights> {
     .slice(0, 6);
 
   // ── Fit-score bucket distribution ────────────────────────────────
-  const scoreBuckets = { great: 0, possible: 0, low: 0, total: evaluated.length };
+  const scoreBuckets = {
+    great: 0,
+    possible: 0,
+    low: 0,
+    total: evaluated.length,
+  };
   for (const j of evaluated) {
     const s = Number(j.fit_score ?? 0);
     if (s >= 75) scoreBuckets.great++;
@@ -360,7 +362,7 @@ export async function getInsights(userId: string): Promise<Insights> {
 
   // ── Salary intelligence (over MATCHES with a real salary range) ──
   // Normalize to monthly HKD for comparison.
-  const toMonthly = (j: typeof evaluated[number]): number | null => {
+  const toMonthly = (j: (typeof evaluated)[number]): number | null => {
     if (j.salary_min == null || j.salary_max == null) return null;
     let min = Number(j.salary_min);
     let max = Number(j.salary_max);
@@ -378,17 +380,16 @@ export async function getInsights(userId: string): Promise<Insights> {
 
   const salaries = matches
     .map((j) => ({ j, monthly: toMonthly(j) }))
-    .filter((x): x is { j: (typeof matches)[number]; monthly: number } =>
-      x.monthly !== null && x.monthly > 0,
+    .filter(
+      (x): x is { j: (typeof matches)[number]; monthly: number } =>
+        x.monthly !== null && x.monthly > 0,
     );
   const monthlyVals = salaries.map((s) => s.monthly).sort((a, b) => a - b);
   const medianMonthly = monthlyVals.length
     ? monthlyVals[Math.floor(monthlyVals.length / 2)]
     : 0;
   const avgMonthly = monthlyVals.length
-    ? Math.round(
-        monthlyVals.reduce((a, b) => a + b, 0) / monthlyVals.length,
-      )
+    ? Math.round(monthlyVals.reduce((a, b) => a + b, 0) / monthlyVals.length)
     : 0;
 
   const salaryDistribution = [
@@ -459,7 +460,9 @@ export async function getInsights(userId: string): Promise<Insights> {
 
   // ── Application momentum ─────────────────────────────────────────
   const appliedCount = jobs.filter((j) => j.applied === true).length;
-  const notInterestedCount = jobs.filter((j) => j.interested_in === false).length;
+  const notInterestedCount = jobs.filter(
+    (j) => j.interested_in === false,
+  ).length;
   // Letters on MATCHES only — keeps the pipeline funnel monotonic
   // (matches → letters ≤ matches). Users can also build letters on non-fit
   // jobs; that's tracked separately as totalLetters.

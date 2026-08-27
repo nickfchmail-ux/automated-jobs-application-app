@@ -5,8 +5,10 @@ import {
   triggerCoverLetterAction,
   triggerResumeAction,
 } from "@/app/actions/documents";
+import { getEntitlementGatesAction } from "@/app/actions/entitlements";
 import DotLoader from "@/components/DotLoader";
 import { useDocumentVersions } from "@/components/useDocumentVersions";
+import { hasQuota, type EntitlementSummary } from "@/lib/entitlements-shared";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -65,6 +67,33 @@ export default function DocumentPreviewOverlay({
   const [fineTuneError, setFineTuneError] = useState<string | null>(null);
   // AI-assist: rewrite the rough note into a clearer instruction.
   const [enhancing, setEnhancing] = useState(false);
+
+  // Entitlement gates — the Enhance (AI rewrite) button is disabled when the
+  // user has no fine-tune quota left for this document type. The backend
+  // enforces quota on the actual Regenerate; this just disables the free AI
+  // assist so we don't burn tokens on a note the user can't apply.
+  const [entitlements, setEntitlements] = useState<EntitlementSummary | null>(
+    null,
+  );
+  const [gatesLoaded, setGatesLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    getEntitlementGatesAction().then((s) => {
+      if (!alive) return;
+      setEntitlements(s);
+      setGatesLoaded(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const fineTuneExhausted =
+    gatesLoaded &&
+    !!entitlements &&
+    !hasQuota(
+      entitlements,
+      type === "resume" ? "fine_tune_resume" : "fine_tune_cover_letter",
+    );
 
   // The active version object (may be undefined while loading).
   const active = versions[activeIdx];
@@ -231,6 +260,12 @@ export default function DocumentPreviewOverlay({
    *  REPLACE the textarea content (the user can still edit before applying). */
   async function handleEnhance() {
     if (enhancing) return;
+    if (fineTuneExhausted) {
+      setFineTuneError(
+        "You've used all your fine-tunes for this plan. Upgrade on your Profile page to keep enhancing.",
+      );
+      return;
+    }
     const note = refinement.trim();
     if (!note) {
       setFineTuneError("Type something first, then use Enhance.");
@@ -242,11 +277,19 @@ export default function DocumentPreviewOverlay({
       const res = await enhanceRefinementAction(note, type);
       if (res.ok) {
         setRefinement(res.enhanced);
+        // This Enhance consumed one fine-tune — refresh the gates so the
+        // button disables the moment the user's quota hits 0.
+        getEntitlementGatesAction().then((s) => {
+          if (s) setEntitlements(s);
+        });
       } else {
         setFineTuneError(
-          res.error === "Type something to enhance first."
-            ? "Type something first, then use Enhance."
-            : "Couldn't enhance that. Please try again in a moment.",
+          res.error.startsWith("LIMIT_REACHED:")
+            ? `${res.error.replace(/^LIMIT_REACHED:\s*/, "")} ` +
+                "You can upgrade on your Profile page."
+            : res.error === "Type something to enhance first."
+              ? "Type something first, then use Enhance."
+              : "Couldn't enhance that. Please try again in a moment.",
         );
       }
     } finally {
@@ -376,7 +419,7 @@ export default function DocumentPreviewOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -384,11 +427,11 @@ export default function DocumentPreviewOverlay({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
-        className="relative w-full max-w-4xl h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+        className="relative w-full max-w-4xl h-full sm:h-[90vh] flex flex-col rounded-none sm:rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl sm:border sm:border-zinc-200 sm:dark:border-zinc-700 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top navigation bar — switch between VERSIONS of this document */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 bg-white dark:bg-zinc-900">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 sm:px-6 py-3 border-b border-zinc-200 dark:border-zinc-700 shrink-0 bg-white dark:bg-zinc-900">
           <div className="flex items-center gap-1 min-w-0">
             <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mr-2 whitespace-nowrap">
               {type === "resume" ? "Tailored Resume" : "Cover Letter"}
@@ -406,11 +449,9 @@ export default function DocumentPreviewOverlay({
                       type="button"
                       disabled={v.status === "building"}
                       onClick={() => setActiveIdx(i)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-wait ${
-                        isActive
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap disabled:opacity-60 disabled:cursor-wait ${isActive
                           ? "bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
-                          : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-transparent"
-                      }`}
+                          : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-transparent"}`}
                     >
                       {v.label}
                       {v.status === "building" && (
@@ -430,12 +471,12 @@ export default function DocumentPreviewOverlay({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 ml-auto sm:ml-0">
             {/* Manual refresh — re-fetches the version list + active content */}
             <button
               onClick={handleRefresh}
               disabled={refreshing || loading}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
               aria-label="Refresh versions"
               title="Refresh versions"
             >
@@ -443,7 +484,7 @@ export default function DocumentPreviewOverlay({
                 <DotLoader dotClassName="bg-zinc-500" className="scale-75" />
               ) : (
                 <svg
-                  className="w-3.5 h-3.5"
+                  className="w-4 h-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -456,63 +497,65 @@ export default function DocumentPreviewOverlay({
                   />
                 </svg>
               )}
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </button>
             <button
               onClick={copyActive}
               disabled={!content || isActiveBuilding}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              aria-label="Copy"
+              title="Copy"
             >
               {copied ? (
-                <span className="text-emerald-500">Copied!</span>
+                <span className="text-emerald-500 text-xs">✓</span>
               ) : (
-                <>
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                    />
-                  </svg>
-                  Copy
-                </>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
               )}
+              <span className="hidden sm:inline">Copy</span>
             </button>
             <button
               onClick={downloadActive}
               disabled={!content || isActiveBuilding}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold w-9 h-9 sm:w-auto sm:px-3 sm:py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50"
+              aria-label={type === "resume" ? "Download PDF" : "Download Word"}
+              title={type === "resume" ? "Download PDF" : "Download Word"}
             >
               {downloading ? (
-                <span>Exporting…</span>
+                <span className="text-xs">…</span>
               ) : (
-                <>
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                    />
-                  </svg>
-                  {type === "resume" ? "Download PDF" : "Download Word"}
-                </>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
               )}
+              <span className="hidden sm:inline">
+                {type === "resume" ? "Download PDF" : "Download Word"}
+              </span>
             </button>
             <button
               onClick={onClose}
-              className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
               aria-label="Close"
             >
               <svg
@@ -573,7 +616,7 @@ export default function DocumentPreviewOverlay({
               </div>
             )
           ) : content ? (
-            <div className="p-8">
+            <div className="p-4 sm:p-8">
               <p className="text-sm leading-7 text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
                 {content}
               </p>
@@ -586,7 +629,7 @@ export default function DocumentPreviewOverlay({
         </div>
 
         {/* Bottom bar — Fine-tune this version */}
-        <div className="px-6 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0 bg-white dark:bg-zinc-900">
+        <div className="px-4 sm:px-6 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0 bg-white dark:bg-zinc-900">
           {fineTuneOpen ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
@@ -610,7 +653,13 @@ export default function DocumentPreviewOverlay({
               <div className="relative">
                 <textarea
                   value={refinement}
-                  onChange={(e) => setRefinement(e.target.value)}
+                  onChange={(e) => {
+                    // Client-side 300-word cap (mirrors the backend hard cap)
+                    // so a huge paste can't blow up AI token costs.
+                    const words = e.target.value.split(/\s+/).filter(Boolean);
+                    if (words.length > 300) return;
+                    setRefinement(e.target.value);
+                  }}
                   disabled={requesting || isActiveBuilding || enhancing}
                   rows={2}
                   placeholder={
@@ -625,9 +674,18 @@ export default function DocumentPreviewOverlay({
                 <button
                   type="button"
                   onClick={handleEnhance}
-                  disabled={enhancing || requesting || isActiveBuilding}
+                  disabled={
+                    enhancing ||
+                    requesting ||
+                    isActiveBuilding ||
+                    fineTuneExhausted
+                  }
+                  title={
+                    fineTuneExhausted
+                      ? "You've used all your fine-tunes for this plan. Upgrade to keep using Enhance."
+                      : "Enhance this instruction with AI"
+                  }
                   className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Enhance this instruction with AI"
                 >
                   {enhancing ? (
                     <>
@@ -696,7 +754,7 @@ export default function DocumentPreviewOverlay({
                   setFineTuneError(null);
                 }}
                 disabled={!active || active.status !== "completed"}
-                className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 <svg
                   className="w-4 h-4"

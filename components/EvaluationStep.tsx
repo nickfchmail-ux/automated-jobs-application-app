@@ -1,5 +1,6 @@
 "use client";
 
+import { getEntitlementGatesAction } from "@/app/actions/entitlements";
 import {
   getEvaluationRunsAction,
   getEvaluationStatusAction,
@@ -7,6 +8,7 @@ import {
 } from "@/app/actions/evaluate";
 import EvaluationProgress from "@/components/EvaluationProgress";
 import { useSearchKeys } from "@/hooks/useSearchKeys";
+import { hasQuota, type EntitlementSummary } from "@/lib/entitlements-shared";
 import {
   evaluationRunsUpdated,
   evaluationStatusUpdated,
@@ -54,6 +56,21 @@ export default function EvaluationStep() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
   const [evalRequesting, setEvalRequesting] = useState(false);
+
+  // Entitlement gates — disable the Match button when the user is out of
+  // evaluation quota for the selected key. Backend enforces authoritatively.
+  const [entitlements, setEntitlements] = useState<EntitlementSummary | null>(
+    null,
+  );
+  useEffect(() => {
+    let alive = true;
+    getEntitlementGatesAction().then((s) => {
+      if (alive) setEntitlements(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   // Set when the user clicks "Back to match" — dismisses the completed
   // confirmation so the dropdown selector returns.
   const [dismissed, setDismissed] = useState(false);
@@ -108,6 +125,12 @@ export default function EvaluationStep() {
   );
   const evaluationActive =
     evaluationStatus === "queued" || evaluationStatus === "evaluating";
+
+  // The selected key's normalized form — used for free per-key eval quota.
+  const selectedNorm = selected.trim().toLowerCase().replace(/\s+/g, "_");
+  const evaluationExhausted =
+    !!entitlements &&
+    !hasQuota(entitlements, "evaluation", selectedNorm || null);
 
   // Default the selection to the current search's key (or the first key with
   // unevaluated posts) — but ONLY on initial load, when the user hasn't made
@@ -733,7 +756,12 @@ export default function EvaluationStep() {
           {/* Match button */}
           <button
             onClick={handleMatch}
-            disabled={!selected || evalRequesting}
+            disabled={!selected || evalRequesting || evaluationExhausted}
+            title={
+              evaluationExhausted
+                ? "You've used all your evaluations for this plan. Upgrade on your Profile page for more."
+                : undefined
+            }
             className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm px-5 py-2.5 shadow-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
           >
             {evalRequesting ? (
@@ -777,6 +805,19 @@ export default function EvaluationStep() {
           <p className="text-xs text-[var(--ink-faint)]">
             Showing all your search keys with unevaluated posts — you can match
             any of them.
+          </p>
+        )}
+
+        {/* Evaluation quota exhausted */}
+        {evaluationExhausted && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            You&apos;ve used all your evaluations for this plan.{" "}
+            <a
+              href="/profile"
+              className="font-semibold underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+            >
+              Upgrade for more →
+            </a>
           </p>
         )}
 

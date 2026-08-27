@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Class-based dark mode (manual toggle). Tailwind v4: `dark:` variants now
+   respond to the `.dark` class on <html> instead of the OS preference. The
+   ThemeProvider adds/removes the class + persists the choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ==================================================================== */
 /*  JobSeek design tokens — Stripe-inspired, editorial, data-literate.  */
 /*  Warm paper canvas, one violet accent, precise data typography.      */
@@ -30,28 +35,26 @@
   --bad-soft: #fff1f2;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0c0a09; /* stone-950 */
-    --paper-soft: #141210;
-    --surface: #1c1917; /* stone-900 */
-    --ink: #fafaf9; /* stone-50 */
-    --ink-soft: #a8a29e; /* stone-400 */
-    --ink-faint: #57534e; /* stone-600 */
-    --line: #292524; /* stone-800 */
-    --line-strong: #44403c; /* stone-700 */
+.dark {
+  --paper: #0c0a09; /* stone-950 */
+  --paper-soft: #141210;
+  --surface: #1c1917; /* stone-900 */
+  --ink: #fafaf9; /* stone-50 */
+  --ink-soft: #a8a29e; /* stone-400 */
+  --ink-faint: #57534e; /* stone-600 */
+  --line: #292524; /* stone-800 */
+  --line-strong: #44403c; /* stone-700 */
 
-    --accent: #a78bfa; /* violet-400 */
-    --accent-ink: #c4b5fd;
-    --accent-soft: #1e1b4b;
+  --accent: #a78bfa; /* violet-400 */
+  --accent-ink: #c4b5fd;
+  --accent-soft: #1e1b4b;
 
-    --good: #34d399; /* emerald-400 */
-    --good-soft: #022c22;
-    --warn: #fbbf24;
-    --warn-soft: #451a03;
-    --bad: #fb7185; /* rose-400 */
-    --bad-soft: #4c0519;
-  }
+  --good: #34d399; /* emerald-400 */
+  --good-soft: #022c22;
+  --warn: #fbbf24;
+  --warn-soft: #451a03;
+  --bad: #fb7185; /* rose-400 */
+  --bad-soft: #4c0519;
 }
 
 @theme inline {

@@ -16,16 +16,26 @@ export function getStripe(): Stripe {
   if (!_stripe) {
     _stripe = new Stripe(key, {
       // Keep in sync with the installed SDK's pinned API version.
-      apiVersion: (Stripe as unknown as { API_VERSION?: string }).API_VERSION as Stripe.StripeConfig["apiVersion"],
+      apiVersion: (Stripe as unknown as { API_VERSION?: string })
+        .API_VERSION as Stripe.StripeConfig["apiVersion"],
       typescript: true,
     });
   }
   return _stripe;
 }
 
-/** The Pro plan's Price ID (monthly subscription). */
-export const PRO_PRICE_ID =
-  process.env.STRIPE_PRO_PRICE_ID ?? "";
+/** The Pro plan's Price ID (monthly subscription) for regular users. */
+export const PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID ?? "";
+
+/**
+ * Reduced Price ID for ADMIN users (8 HKD/month). Selected ONLY server-side
+ * in the checkout route, based on the caller's verified role — never from
+ * client input, so a regular user cannot request the admin price.
+ */
+export const ADMIN_PRICE_ID = process.env.STRIPE_ADMIN_PRICE_ID ?? "";
+
+/** Standard plan price ID (150 HKD/month). */
+export const STANDARD_PRICE_ID = process.env.STRIPE_STANDARD_PRICE_ID ?? "";
 
 /** The base URL for redirects (Checkout success/cancel + portal return). */
 export function appUrl(): string {
@@ -39,5 +49,5 @@ export function appUrl(): string {
 
 /** Whether Stripe is configured (env present). */
 export function isStripeConfigured(): boolean {
-  return Boolean(key && PRO_PRICE_ID);
+  return Boolean(key && (PRO_PRICE_ID || ADMIN_PRICE_ID));
 }
