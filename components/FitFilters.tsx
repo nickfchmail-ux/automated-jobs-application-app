@@ -1,11 +1,11 @@
 "use client";
 
 import JobCard, { Job, JobListItem } from "@/components/JobCard";
-import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
 import {
   saveMatchesScrollPosition,
   useMatchesScrollRestore,
 } from "@/hooks/useMatchesScrollRestore";
+import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";

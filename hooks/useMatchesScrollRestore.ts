@@ -57,7 +57,11 @@ export function useMatchesScrollRestore(): void {
     const y = Number(saved);
     const apply = () => {
       if (!Number.isFinite(y) || y <= 0) return;
-      window.scrollTo({ top: y, left: 0, behavior: "instant" as ScrollBehavior });
+      window.scrollTo({
+        top: y,
+        left: 0,
+        behavior: "instant" as ScrollBehavior,
+      });
       document.documentElement.scrollTop = y;
       document.body.scrollTop = y;
     };
@@ -78,7 +82,5 @@ export function useMatchesScrollRestore(): void {
       cancelAnimationFrame(raf);
       document.removeEventListener("click", onDocClick, true);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
-

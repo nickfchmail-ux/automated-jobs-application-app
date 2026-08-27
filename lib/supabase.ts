@@ -63,13 +63,10 @@ export function requireServiceClient(): SupabaseClient {
 // Backwards-compatible export: resolves the lazy client. Never throws at
 // module load — only when actually used (mirrors the old `supabase` export
 // without the build-breaking eager `createClient`).
-export const supabase: SupabaseClient = new Proxy(
-  {} as SupabaseClient,
-  {
-    get(_t, prop, receiver) {
-      const client = getServiceClient();
-      const v = Reflect.get(client, prop, receiver);
-      return typeof v === "function" ? v.bind(client) : v;
-    },
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_t, prop, receiver) {
+    const client = getServiceClient();
+    const v = Reflect.get(client, prop, receiver);
+    return typeof v === "function" ? v.bind(client) : v;
   },
-);
+});
