@@ -183,7 +183,7 @@ export default function JobCard({
       exit={{ opacity: 0, scale: 0.97 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -3 }}
-      className="relative card card-hover flex flex-col min-h-44 cursor-pointer group"
+      className="relative card card-hover flex flex-col min-h-44 min-w-0 cursor-pointer group w-full"
     >
       {/* Stretched link — entire card navigates to detail page */}
       <Link
@@ -197,7 +197,7 @@ export default function JobCard({
       />
 
       {/* Card body */}
-      <div className="flex-1 overflow-hidden p-6 flex flex-col gap-4">
+      <div className="flex-1 overflow-hidden min-w-0 p-6 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">

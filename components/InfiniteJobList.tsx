@@ -343,7 +343,7 @@ export default function InfiniteJobList({
           <p className="text-sm mt-1">Try selecting a different combination.</p>
         </div>
       ) : (
-        <motion.div layout className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        <motion.div layout className="grid w-full gap-5 sm:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {filtered.map((job) => (
               <JobCard key={job.id} job={job} />
