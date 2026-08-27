@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 
 /**
  * Ensures the page opens at the TOP on every route change to a job detail

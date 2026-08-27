@@ -7,8 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSelector } from "react-redux";
 
-import ThemeToggle from "@/components/ThemeToggle";
 import JobBackButton from "@/app/(main)/jobs/[id]/JobBackButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CloseIcon from "@mui/icons-material/Close";

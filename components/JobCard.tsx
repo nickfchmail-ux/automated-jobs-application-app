@@ -187,7 +187,11 @@ export default function JobCard({
     >
       {/* Stretched link — entire card navigates to detail page */}
       <Link
-        href={backHref ? `/jobs/${job.id}?from=${encodeURIComponent(backHref)}` : `/jobs/${job.id}`}
+        href={
+          backHref
+            ? `/jobs/${job.id}?from=${encodeURIComponent(backHref)}`
+            : `/jobs/${job.id}`
+        }
         className="absolute inset-0 rounded-2xl z-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
         aria-label={`View details for ${job.title} at ${job.company}`}
       />
