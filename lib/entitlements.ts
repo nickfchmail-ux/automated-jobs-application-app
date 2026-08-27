@@ -1,5 +1,5 @@
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 
 // Client-safe types + pure helpers live in the shared module (no server-only
 // imports), so client components can import them without pulling in
@@ -179,6 +179,7 @@ export async function getEntitlementsLedger(
   userId: string,
   plan: Plan = "free",
 ): Promise<EntitlementsLedger | null> {
+  const supabase = requireServiceClient();
   const { data, error } = await supabase
     .from("entitlements")
     .select("*")
@@ -254,6 +255,7 @@ export async function syncEntitlementsLedger(
   const ledger = await getEntitlementsLedger(userId, effectivePlan);
   if (!ledger) return null;
 
+  const supabase = requireServiceClient();
   const allowance = planAllowance(effectivePlan);
   const changed =
     ledger.plan !== effectivePlan ||
@@ -364,6 +366,7 @@ export async function getProfile(
       .filter(Boolean)
       .includes(email.trim().toLowerCase());
 
+  const supabase = requireServiceClient();
   const { data: existing } = await supabase
     .from("profiles")
     .select("*")
@@ -473,6 +476,7 @@ export function isUnlimited(profile: Profile): boolean {
 
 /** Query the user's usage rows within the current usage period. */
 async function getUsageRecords(userId: string, periodStart: string) {
+  const supabase = requireServiceClient();
   const { data, error } = await supabase
     .from("usage_records")
     .select("usage_type, search_key, created_at")

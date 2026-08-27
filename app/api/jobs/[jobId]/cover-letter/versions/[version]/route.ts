@@ -1,5 +1,5 @@
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -18,6 +18,8 @@ export async function GET(
     params: Promise<{ jobId: string; version: string }>;
   },
 ) {
+  const supabase = requireServiceClient();
+
   const { jobId, version: versionStr } = await params;
   const version = parseInt(versionStr, 10);
   const userId = await getUserId();

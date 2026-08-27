@@ -1,8 +1,9 @@
 import { cache } from "react";
 
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 
 export const getJob = cache(async (id: string, userId: string) => {
+  const supabase = requireServiceClient();
   const { data: job, error } = await supabase
     .from("jobs")
     .select("*")

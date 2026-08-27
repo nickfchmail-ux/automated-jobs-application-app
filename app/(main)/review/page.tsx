@@ -3,7 +3,7 @@ import type { JobListItem } from "@/components/JobCard";
 import PageHeader from "@/components/PageHeader";
 import { getUserId } from "@/lib/auth";
 import { JOBS_LIST_SELECT } from "@/lib/data-services";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -26,6 +26,7 @@ export default async function ReviewPage() {
 
   let jobs: JobListItem[] = [];
   try {
+    const supabase = requireServiceClient();
     const result = await supabase
       .from("jobs")
       // Projected list columns — not `select("*")` (heavy columns like

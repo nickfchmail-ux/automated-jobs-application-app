@@ -1,5 +1,5 @@
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -20,6 +20,10 @@ import { NextRequest, NextResponse } from "next/server";
  * Every write is scoped by stripe_customer_id → user_id.
  */
 export async function POST(req: NextRequest) {
+  // Validates SUPABASE_SERVICE_KEY at call time so a bad key can never break
+  // the build or unrelated routes.
+  const supabase = requireServiceClient();
+
   if (!isStripeConfigured()) {
     return NextResponse.json(
       { error: "Billing is not configured." },
@@ -209,6 +213,7 @@ async function setProfileFromCustomer(
   },
 ) {
   if (!customerId) return;
+  const supabase = requireServiceClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("user_id, stripe_customer_id, plan, usage_period_start")
@@ -251,6 +256,7 @@ async function syncLedgerForPlan(
   plan: "free" | "standard" | "pro",
   periodEndsAt?: string | null,
 ) {
+  const supabase = requireServiceClient();
   const allowance =
     plan === "standard"
       ? {

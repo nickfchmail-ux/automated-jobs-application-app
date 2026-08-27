@@ -8,7 +8,7 @@ import {
   getProfile,
 } from "@/lib/entitlements";
 import { fetchWithAuth } from "@/lib/fetchWithAuth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import type {
   FunnelCounts,
   PipelineRun,
@@ -309,6 +309,7 @@ export async function getPipelineRunAction(
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
+  const supabase = requireServiceClient();
   try {
     const { data, error } = await supabase
       .from("pipeline_runs")

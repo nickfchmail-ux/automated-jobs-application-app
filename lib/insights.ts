@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 
 /**
  * Deep job-search intelligence.
@@ -240,6 +240,7 @@ const EMPTY_INSIGHTS: Insights = {
 export async function getInsights(userId: string): Promise<Insights> {
   if (!userId) return EMPTY_INSIGHTS;
 
+  const supabase = requireServiceClient();
   const { data, error } = await supabase.rpc("get_user_insights", {
     p_user_id: userId,
   });

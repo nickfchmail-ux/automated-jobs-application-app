@@ -2,7 +2,7 @@
 
 import { getUserId } from "@/lib/auth";
 import { consumeEntitlement } from "@/lib/entitlements";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import type {
   CoverLetterStatus,
   DocumentVersion,
@@ -257,6 +257,7 @@ export async function getJobDocumentStateAction(
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
+  const supabase = requireServiceClient();
   const { data, error } = await supabase
     .from("jobs")
     .select(

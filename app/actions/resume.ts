@@ -1,7 +1,7 @@
 "use server";
 
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 
 const BUCKET = "resume";
 
@@ -16,6 +16,8 @@ export async function getResumeInfo(): Promise<
 > {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
+
+  const supabase = requireServiceClient();
 
   // The resume filename is DETERMINISTIC (`${userId}-resume.${ext}`), so we
   // don't know the extension without listing. To avoid a bucket LIST on every
@@ -81,6 +83,8 @@ export async function uploadResumeAction(
 ): Promise<UploadResumeResult> {
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
+
+  const supabase = requireServiceClient();
 
   const file = formData.get("resume") as File | null;
   if (!file || file.size === 0)

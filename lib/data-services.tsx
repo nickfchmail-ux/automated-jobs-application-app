@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { getUserId } from "./auth";
-import { supabase } from "./supabase";
+import { requireServiceClient } from "./supabase";
 
 /**
  * The exact columns the list surfaces (matches / review / job cards) render.
@@ -30,6 +30,7 @@ export const getJobsByFit = cache(
     includeNotInterested?: boolean;
   }): Promise<Record<string, unknown>[] | null> => {
     try {
+      const supabase = requireServiceClient();
       let query = supabase
         .from("jobs")
         .select(JOBS_LIST_SELECT)
@@ -63,6 +64,7 @@ export async function getJobsMatch(options?: { limit?: number }) {
   const limit = options?.limit ?? 200;
 
   try {
+    const supabase = requireServiceClient();
     const { data: jobs, error } = await supabase
       .from("jobs")
       .select(JOBS_LIST_SELECT)

@@ -2,7 +2,7 @@
 
 import { getUserId } from "@/lib/auth";
 import { consumeEntitlement } from "@/lib/entitlements";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import type {
   EvaluateResponse,
   EvaluateStatusResponse,
@@ -201,6 +201,7 @@ export async function listSearchKeysAction(
     // Fetch search_key + fit_score + pipeline_run_id for ALL the user's jobs
     // that made it through scraping. We group account-wide so every search
     // key with unevaluated posts shows up, not just the current run's.
+    const supabase = requireServiceClient();
     const { data: scored, error: scoredErr } = await supabase
       .from("jobs")
       .select("search_key, fit_score, pipeline_run_id")
@@ -277,6 +278,7 @@ export async function getEvaluationRunsAction(
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
+  const supabase = requireServiceClient();
   try {
     const { data, error } = await supabase
       .from("evaluation_runs")
@@ -311,6 +313,7 @@ export async function setRunEvaluationStatusAction(
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
+  const supabase = requireServiceClient();
   const { error } = await supabase
     .from("pipeline_runs")
     .update({ evaluation_status: status })

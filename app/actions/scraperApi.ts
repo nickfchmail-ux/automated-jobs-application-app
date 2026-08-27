@@ -1,6 +1,6 @@
 "use server";
 
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 
 /**
  * Check whether ANY ScraperAPI key is available today.
@@ -21,6 +21,7 @@ export async function getScraperApiAvailability(): Promise<{
 }> {
   try {
     const today = new Date().toISOString().slice(0, 10);
+    const supabase = requireServiceClient();
     const { data, error } = await supabase
       .from("scraper_api_keys")
       .select("key_value, exhausted_on")

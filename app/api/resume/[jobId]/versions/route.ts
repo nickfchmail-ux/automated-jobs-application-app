@@ -1,5 +1,5 @@
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import type { DocumentVersion } from "@/types/api";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -16,6 +16,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
+  const supabase = requireServiceClient();
+
   const { jobId } = await params;
   const userId = await getUserId();
   if (!userId) {
@@ -93,6 +95,7 @@ async function getLegacyResumeVersion(
   basedOn: number | null;
   error: string | null;
 } | null> {
+  const supabase = requireServiceClient();
   const { data: row, error } = await supabase
     .from("generated_resumes")
     .select("file_name")

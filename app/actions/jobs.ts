@@ -1,7 +1,7 @@
 "use server";
 
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
 export type ToggleAppliedResult =
@@ -15,6 +15,7 @@ export async function toggleAppliedAction(
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
+  const supabase = requireServiceClient();
   const { error } = await supabase
     .from("jobs")
     .update({
@@ -44,6 +45,7 @@ export async function toggleInterestedAction(
   const userId = await getUserId();
   if (!userId) return { ok: false, error: "Not authenticated." };
 
+  const supabase = requireServiceClient();
   const { error } = await supabase
     .from("jobs")
     .update({ interested_in: interestedIn })

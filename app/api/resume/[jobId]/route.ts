@@ -1,5 +1,5 @@
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -17,6 +17,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
+  const supabase = requireServiceClient();
+
   const { jobId } = await params;
   const userId = await getUserId();
   if (!userId) {

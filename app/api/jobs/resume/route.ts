@@ -1,5 +1,5 @@
 import { getUserId } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from "next/server";
  * and links via Supabase Realtime.
  */
 export async function POST(req: NextRequest) {
+  const supabase = requireServiceClient();
+
   const userId = await getUserId();
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });

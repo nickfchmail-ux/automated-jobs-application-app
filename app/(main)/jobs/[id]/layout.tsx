@@ -9,7 +9,7 @@ import LiveFitChip from "@/components/LiveFitChip";
 import ResumeGenerationCard from "@/components/ResumeGenerationCard";
 import { getUserId } from "@/lib/auth";
 import { formatDate } from "@/lib/dateUtils";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import type { CoverLetterStatus, ResumeStatus } from "@/types/api";
 import { getJob } from "./_data";
 import AppliedToggle from "./AppliedToggle";
@@ -23,6 +23,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
+  const supabase = requireServiceClient();
   const { id } = await params;
   const { data: job } = await supabase
     .from("jobs")

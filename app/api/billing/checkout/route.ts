@@ -9,7 +9,7 @@ import {
   PRO_PRICE_ID,
   STANDARD_PRICE_ID,
 } from "@/lib/stripe";
-import { supabase } from "@/lib/supabase";
+import { requireServiceClient } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 
 /** Pull the real client IP from the request (behind Vercel/Cloudflare proxies). */
@@ -36,6 +36,10 @@ function getClientIp(req: NextRequest): string | null {
  * The client can NEVER pick the currency, price, or the admin tier.
  */
 export async function POST(req: NextRequest) {
+  // Validates SUPABASE_SERVICE_KEY at call time (never at module load, so a
+  // bad key can't break the build or unrelated routes).
+  const supabase = requireServiceClient();
+
   if (!isStripeConfigured()) {
     return NextResponse.json(
       { error: "Billing is not configured." },
