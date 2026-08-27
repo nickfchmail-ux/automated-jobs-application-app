@@ -105,9 +105,29 @@ export default function FitFilters({
   const [sourceFilter, setSourceFilter] = useState("All");
   const [keyFilter, setKeyFilter] = useState("All");
   const [appliedFilter, setAppliedFilter] = useState("Not Applied");
-  const [viewMode, setViewMode] = useState<"table" | "card">(() =>
-    typeof window !== "undefined" && window.innerWidth < 768 ? "card" : "table",
-  );
+  // View mode (table vs card). Persisted to localStorage so the user's choice
+  // survives navigating to a job and back (without this, the component
+  // remounts and resets to the width default — desktop flips back to table).
+  const [viewMode, setViewMode] = useState<"table" | "card">(() => {
+    if (typeof window === "undefined") return "table";
+    try {
+      const saved = localStorage.getItem("jobseek:matches-view");
+      if (saved === "card" || saved === "table") return saved;
+    } catch {
+      // non-fatal
+    }
+    // First visit: default by screen width (mobile → cards, desktop → table).
+    return window.innerWidth < 768 ? "card" : "table";
+  });
+
+  const changeViewMode = (mode: "table" | "card") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("jobseek:matches-view", mode);
+    } catch {
+      // non-fatal
+    }
+  };
 
   // Restore the saved scroll position when returning from a job detail page.
   useMatchesScrollRestore();
@@ -236,7 +256,7 @@ export default function FitFilters({
         </p>
         <div className="flex items-center gap-1 rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5">
           <button
-            onClick={() => setViewMode("table")}
+            onClick={() => changeViewMode("table")}
             aria-pressed={viewMode === "table"}
             className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${viewMode === "table" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
             aria-label="Table view"
@@ -256,7 +276,7 @@ export default function FitFilters({
             </svg>
           </button>
           <button
-            onClick={() => setViewMode("card")}
+            onClick={() => changeViewMode("card")}
             aria-pressed={viewMode === "card"}
             className={`p-1.5 rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${viewMode === "card" ? "bg-zinc-900 dark:bg-zinc-50 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}`}
             aria-label="Card view"
