@@ -112,14 +112,6 @@ export interface Insights {
   };
 }
 
-/** Median of an array. */
-function median(nums: number[]): number {
-  if (!nums.length) return 0;
-  const sorted = [...nums].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
 /**
  * The raw JSON shape the `get_user_insights` Postgres RPC returns.
  * The DB does ALL the aggregation (strengths/gaps tokenization, salary
