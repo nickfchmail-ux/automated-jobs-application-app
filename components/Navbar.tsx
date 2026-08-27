@@ -7,7 +7,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSelector } from "react-redux";
 
-import JobBackButton from "@/app/(main)/jobs/[id]/JobBackButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -267,20 +266,14 @@ export default function Navbar() {
       {/* Mobile top bar */}
       <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)] safe-top">
         <div className="flex items-center justify-between pl-2 pr-2 h-12">
-          {pathName?.startsWith("/jobs/") ? (
-            <div className="flex items-center h-full min-w-0">
-              <JobBackButton />
-            </div>
-          ) : (
-            <Link href="/overview" className="flex items-stretch h-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/JobSeek.png"
-                alt="JobSeek"
-                className="h-full w-auto object-contain"
-              />
-            </Link>
-          )}
+          <Link href="/overview" className="flex items-stretch h-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/JobSeek.png"
+              alt="JobSeek"
+              className="h-full w-auto object-contain"
+            />
+          </Link>
           <div className="flex items-center gap-1.5">
             <ThemeToggle />
             <button

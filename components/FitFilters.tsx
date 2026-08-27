@@ -8,7 +8,7 @@ import {
 } from "@/hooks/useMatchesScrollRestore";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function detectSourceName(url: string): string {
   if (url.includes("jobsdb.com")) return "JobsDB";
@@ -106,19 +106,31 @@ export default function FitFilters({
   const [keyFilter, setKeyFilter] = useState("All");
   const [appliedFilter, setAppliedFilter] = useState("Not Applied");
   // View mode (table vs card). Persisted to localStorage so the user's choice
-  // survives navigating to a job and back (without this, the component
-  // remounts and resets to the width default — desktop flips back to table).
-  const [viewMode, setViewMode] = useState<"table" | "card">(() => {
-    if (typeof window === "undefined") return "table";
+  // survives navigating to a job and back.
+  //
+  // HYDRATION-SAFE: the initializer returns a STABLE "table" on BOTH the
+  // server and the client's first render (never touches localStorage/window
+  // during render — that would make server HTML and client hydration
+  // disagree → React #418 hydration error, which cascades to #310 when
+  // navigating between pages). The saved preference is applied in a
+  // useEffect AFTER hydration (client-only).
+  const [viewMode, setViewMode] = useState<"table" | "card">("table");
+  useEffect(() => {
     try {
       const saved = localStorage.getItem("jobseek:matches-view");
-      if (saved === "card" || saved === "table") return saved;
+      if (saved === "card" || saved === "table") {
+        setViewMode(saved);
+        return;
+      }
     } catch {
       // non-fatal
     }
     // First visit: default by screen width (mobile → cards, desktop → table).
-    return window.innerWidth < 768 ? "card" : "table";
-  });
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setViewMode("card");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const changeViewMode = (mode: "table" | "card") => {
     setViewMode(mode);
