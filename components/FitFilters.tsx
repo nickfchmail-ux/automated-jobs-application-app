@@ -288,7 +288,7 @@ export default function FitFilters({
         <motion.div layout className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {filtered.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} backHref="/matches" />
             ))}
           </AnimatePresence>
         </motion.div>
@@ -324,7 +324,7 @@ export default function FitFilters({
               {filtered.map((job) => (
                 <tr
                   key={job.id}
-                  onClick={() => router.push(`/jobs/${job.id}`)}
+                  onClick={() => router.push(`/jobs/${job.id}?from=/matches`)}
                   className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3">

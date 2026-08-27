@@ -13,6 +13,7 @@ import { requireServiceClient } from "@/lib/supabase";
 import type { CoverLetterStatus, ResumeStatus } from "@/types/api";
 import { getJob } from "./_data";
 import AppliedToggle from "./AppliedToggle";
+import JobBackButton from "./JobBackButton";
 import JobTabs from "./JobTabs";
 import NotInterestedButton from "./NotInterestedButton";
 
@@ -150,6 +151,10 @@ export default async function JobDetailLayout({
         <AnimatedBlock>
           <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
             <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6">
+              {/* Back button row */}
+              <div className="mb-4">
+                <JobBackButton />
+              </div>
               {/* Title row */}
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div className="flex-1 min-w-0">

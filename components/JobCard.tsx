@@ -160,7 +160,14 @@ function AwaitingEvaluationBadge() {
   );
 }
 
-export default function JobCard({ job }: { job: Job | JobListItem }) {
+export default function JobCard({
+  job,
+  backHref,
+}: {
+  job: Job | JobListItem;
+  /** Optional return target appended to the detail link (e.g. `?from=/matches`) */
+  backHref?: string;
+}) {
   const parsedSkills: string[] =
     typeof job.skills === "string"
       ? JSON.parse(job.skills)
@@ -180,7 +187,7 @@ export default function JobCard({ job }: { job: Job | JobListItem }) {
     >
       {/* Stretched link — entire card navigates to detail page */}
       <Link
-        href={`/jobs/${job.id}`}
+        href={backHref ? `/jobs/${job.id}?from=${encodeURIComponent(backHref)}` : `/jobs/${job.id}`}
         className="absolute inset-0 rounded-2xl z-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
         aria-label={`View details for ${job.title} at ${job.company}`}
       />
