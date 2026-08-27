@@ -114,11 +114,17 @@ export default function FitFilters({
 
   const sorted = useMemo(
     () =>
-      [...jobs].sort(
-        (a, b) =>
+      [...jobs].sort((a, b) => {
+        // Primary: fit score (highest first). Jobs without a score sort last.
+        const sa = a.fit_score ?? -1;
+        const sb = b.fit_score ?? -1;
+        if (sa !== sb) return sb - sa;
+        // Secondary: post date (newest first).
+        return (
           computeActualPostedTimestamp(b.posted_date, b.scraped_date) -
-          computeActualPostedTimestamp(a.posted_date, a.scraped_date),
-      ),
+          computeActualPostedTimestamp(a.posted_date, a.scraped_date)
+        );
+      }),
     [jobs],
   );
 
