@@ -2,6 +2,10 @@
 
 import JobCard, { Job, JobListItem } from "@/components/JobCard";
 import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
+import {
+  saveMatchesScrollPosition,
+  useMatchesScrollRestore,
+} from "@/hooks/useMatchesScrollRestore";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -104,6 +108,9 @@ export default function FitFilters({
   const [viewMode, setViewMode] = useState<"table" | "card">(() =>
     typeof window !== "undefined" && window.innerWidth < 768 ? "card" : "table",
   );
+
+  // Restore the saved scroll position when returning from a job detail page.
+  useMatchesScrollRestore();
 
   const sorted = useMemo(
     () =>
@@ -324,7 +331,10 @@ export default function FitFilters({
               {filtered.map((job) => (
                 <tr
                   key={job.id}
-                  onClick={() => router.push(`/jobs/${job.id}?from=/matches`)}
+                  onClick={() => {
+                    saveMatchesScrollPosition();
+                    router.push(`/jobs/${job.id}?from=/matches`);
+                  }}
                   className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >
                   <td className="px-4 py-3">
