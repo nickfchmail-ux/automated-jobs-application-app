@@ -16,6 +16,7 @@ import AppliedToggle from "./AppliedToggle";
 import JobBackButton from "./JobBackButton";
 import JobTabs from "./JobTabs";
 import NotInterestedButton from "./NotInterestedButton";
+import ScrollJobDetailToTop from "./ScrollJobDetailToTop";
 
 export const revalidate = 0;
 
@@ -147,14 +148,20 @@ export default async function JobDetailLayout({
       }}
     >
       <div className="min-h-screen bg-[var(--paper)] dark:bg-zinc-950">
+        {/* Force the detail page to open at the top (no inherited scroll). */}
+        <ScrollJobDetailToTop />
+        {/* ── Desktop back button (sticky, top-left of content) ──
+            Only shown on lg+ (mobile shows it in the top bar instead).
+            Sits above the header card, outside the left sidebar rail. */}
+        <div className="hidden lg:block sticky top-0 z-30 px-4 sm:px-8 pt-4 pb-0 max-w-5xl mx-auto bg-gradient-to-b from-[var(--paper)] dark:from-zinc-950 to-transparent">
+          <div className="h-10 flex items-center">
+            <JobBackButton />
+          </div>
+        </div>
         {/* ── Header card ─────────────────────────────────────── */}
         <AnimatedBlock>
           <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
             <div className="max-w-5xl mx-auto px-4 sm:px-8 py-6">
-              {/* Back button row */}
-              <div className="mb-4">
-                <JobBackButton />
-              </div>
               {/* Title row */}
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div className="flex-1 min-w-0">

@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 
 import ThemeToggle from "@/components/ThemeToggle";
+import JobBackButton from "@/app/(main)/jobs/[id]/JobBackButton";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CloseIcon from "@mui/icons-material/Close";
@@ -219,7 +220,7 @@ export default function Navbar() {
 
   const shell = (
     <div className="h-full flex flex-col bg-[var(--surface)] border-r border-[var(--line)]">
-      {/* Brand — business logo, full sidebar width */}
+      {/* Brand — business logo, full sidebar width (always shown on desktop) */}
       <div className="px-4 pt-5 pb-2">
         <Link href="/overview" className="block shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -266,14 +267,20 @@ export default function Navbar() {
       {/* Mobile top bar */}
       <header className="lg:hidden sticky top-0 z-30 bg-[var(--surface)] border-b border-[var(--line)] safe-top">
         <div className="flex items-center justify-between pl-2 pr-2 h-12">
-          <Link href="/overview" className="flex items-stretch h-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/JobSeek.png"
-              alt="JobSeek"
-              className="h-full w-auto object-contain"
-            />
-          </Link>
+          {pathName?.startsWith("/jobs/") ? (
+            <div className="flex items-center h-full min-w-0">
+              <JobBackButton />
+            </div>
+          ) : (
+            <Link href="/overview" className="flex items-stretch h-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/JobSeek.png"
+                alt="JobSeek"
+                className="h-full w-auto object-contain"
+              />
+            </Link>
+          )}
           <div className="flex items-center gap-1.5">
             <ThemeToggle />
             <button
