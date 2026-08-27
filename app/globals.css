@@ -88,10 +88,16 @@ body {
 /*  Mobile hardening — never a horizontal page scroll; respect the     */
 /*  notched-device safe areas so fixed bars (mobile top bar / drawer)  */
 /*  don't collide with the status bar or home indicator.               */
+/*                                                                     */
+/*  IMPORTANT: use `overflow-x: clip` (NOT `hidden`). `overflow-x:     */
+/*  hidden` on `html`+`body` creates a scroll container on BOTH which   */
+/*  traps the mouse wheel → vertical scrolling stops working on the    */
+/*  deployed app. `clip` clips horizontal overflow WITHOUT creating a   */
+/*  scroll container, so vertical wheel scrolling keeps working.        */
 /* ------------------------------------------------------------------ */
 html,
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
   overscroll-behavior-y: none;
 }
 
