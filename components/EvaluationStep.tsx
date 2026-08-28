@@ -212,7 +212,17 @@ export default function EvaluationStep() {
   // Redux runId — otherwise the progress table would filter to the wrong run
   // and show no (or all) batches. Falls back to the global run when no key
   // is selected (survives page reload when Redux has no active run).
-  const activeRunId = selectedKey?.runId ?? runId ?? null;
+  //
+  // CRITICAL: while a match is in-flight, use the runId CAPTURED at click time
+  // (matchedKeyRef.current.runId) — the batch was created under THAT run.
+  // `selectedKey?.runId` is recomputed from the dropdown keys, which refresh
+  // mid-evaluation and can point to a different run (or become undefined when
+  // the key drops out) — polling/scoping the wrong run made the progress
+  // table show all-zero even though the evaluator was progressing.
+  const activeRunId =
+    (matchInFlight ? matchedKeyRef.current?.runId : selectedKey?.runId) ??
+    runId ??
+    null;
 
   // Auto-refresh keys once evaluation reaches a terminal state — this drops
   // the just-matched key (now fully scored) and surfaces any remaining keys.
