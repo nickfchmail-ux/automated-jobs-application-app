@@ -4,7 +4,7 @@ import {
   HttpResponseInit,
   InvocationContext,
 } from "@azure/functions";
-import { enqueueEvaluationJobs } from "../lib/serviceBus.js";
+import { enqueueEvaluationJobs } from "../lib/storageQueue.js";
 import { getSupabase } from "../lib/supabase.js";
 import {
   consumeUsage,

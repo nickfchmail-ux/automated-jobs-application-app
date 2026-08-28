@@ -1,4 +1,4 @@
-import { InvocationContext, ServiceBusQueueHandler } from "@azure/functions";
+import { InvocationContext, StorageQueueHandler } from "@azure/functions";
 import { evaluateSingleJob } from "../lib/evaluateJob.js";
 import { notifyStateChange } from "../lib/socket.js";
 import {
@@ -9,7 +9,7 @@ import { getSupabase } from "../lib/supabase.js";
 import type { EvaluateJobMessage } from "../shared/types.js";
 
 /**
- * Service Bus queue trigger — ONE invocation per job post (fan-out).
+ * Storage Queue trigger — ONE invocation per job post (fan-out).
  *
  * `POST /api/evaluate` enqueues one message per unevaluated job; Azure scales
  * this trigger across instances, so 20 posts → up to 20 concurrent workers,
@@ -17,14 +17,20 @@ import type { EvaluateJobMessage } from "../shared/types.js";
  *
  * After scoring, the worker ATOMICALLY increments its batch's progress and,
  * when it is the LAST job in the batch, finalizes the run(s).
+ *
+ * Storage queue messages arrive as a JSON STRING — parse it.
  */
-export const evaluateWorker: ServiceBusQueueHandler<
+export const evaluateWorker: StorageQueueHandler<
   EvaluateJobMessage
 > = async (
   msg: EvaluateJobMessage,
   context: InvocationContext,
 ): Promise<void> => {
-  const { jobId, userId, runId, evaluationRunId } = msg ?? {};
+  const parsed =
+    typeof msg === "string"
+      ? (JSON.parse(msg) as EvaluateJobMessage)
+      : msg;
+  const { jobId, userId, runId, evaluationRunId } = parsed ?? {};
   if (!jobId || !userId || !runId || !evaluationRunId) {
     context.error(`evaluateWorker: malformed message (missing ids)`);
     return;

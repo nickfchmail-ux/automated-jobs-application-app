@@ -8,7 +8,7 @@
  * changes. The backend then pushes a `stats` event to the user's room.
  *
  * Env:
- *   STATE_WEBHOOK_URL     e.g. https://ai-job-server.onrender.com/webhook/state
+ *   STATE_WEBHOOK_URL     e.g. https://ai-job-server-r2dk.onrender.com/webhook/state
  *   STATE_WEBHOOK_SECRET  shared secret sent as `x-webhook-secret`
  */
 const STATE_WEBHOOK_URL = process.env.STATE_WEBHOOK_URL ?? "";

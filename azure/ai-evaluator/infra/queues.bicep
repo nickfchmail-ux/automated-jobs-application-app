@@ -1,59 +1,18 @@
 // ============================================================
-//  AI Evaluator — Service Bus queues (queues.bicep)
+//  AI Evaluator — Storage Queues (NO Service Bus — FREE path)
 //
-//  The evaluator shares the scraper's Service Bus namespace
-//  (`jobsautomation-sbns`) and adds TWO independent queues, one
-//  per document concern (each scales + retries on its own):
+//  Migration (2026-08-28, mandated): Service Bus (~$10/mo) →
+//  Azure Storage Queues ($0). The evaluator's queues
+//  (`evaluation-requests`, `resume-requests`,
+//  `cover-letter-requests`) now live in the Function App's host
+//  storage account (`AzureWebJobsStorage`) and are AUTO-CREATED
+//  by the Functions runtime on first use — NO provisioning needed.
 //
-//    - `resume-requests`        → resumeWorker    (tailored resume)
-//    - `cover-letter-requests`  → coverLetterWorker (cover letter)
-//
-//  (`evaluation-requests` already exists on the namespace and is
-//  not recreated here — Bicep is additive/idempotent.)
-//
-//  Deploy (from azure/ai-evaluator):
-//    az deployment group create \
-//      --resource-group jobsautomation-rg \
-//      --template-file infra/queues.bicep \
-//      --parameters serviceBusNamespaceName=jobsautomation-sbns
+//  This file is intentionally a no-op placeholder so existing
+//  deployment scripts that reference it keep working. There is
+//  nothing to deploy for Storage Queues.
 // ============================================================
 
-param serviceBusNamespaceName string = 'jobsautomation-sbns'
-
-// ── Reference the EXISTING Service Bus namespace (don't recreate) ──
-resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' existing = {
-  name: serviceBusNamespaceName
-}
-
-// ── Tailored resume generation (independent of evaluation) ───
-resource resumeQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
-  name: 'resume-requests'
-  parent: serviceBusNamespace
-  properties: {
-    maxSizeInMegabytes: 1024
-    defaultMessageTimeToLive: 'P2D'
-    maxDeliveryCount: 5
-    duplicateDetectionHistoryTimeWindow: 'PT10M'
-    deadLetteringOnMessageExpiration: true
-    enablePartitioning: true
-    lockDuration: 'PT5M' // resume HTML generation can be slow
-  }
-}
-
-// ── Cover letter generation (independent of evaluation) ──────
-resource coverLetterQueue 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = {
-  name: 'cover-letter-requests'
-  parent: serviceBusNamespace
-  properties: {
-    maxSizeInMegabytes: 1024
-    defaultMessageTimeToLive: 'P2D'
-    maxDeliveryCount: 5
-    duplicateDetectionHistoryTimeWindow: 'PT10M'
-    deadLetteringOnMessageExpiration: true
-    enablePartitioning: true
-    lockDuration: 'PT5M'
-  }
-}
-
-// ── Outputs ──────────────────────────────────────────────────
-output serviceBusNamespaceName_out string = serviceBusNamespaceName
+// Intentionally empty — Storage Queues are auto-created by the Functions
+// runtime inside the existing `AzureWebJobsStorage` account. No Service Bus
+// namespace, no queues resource, no RBAC needed.

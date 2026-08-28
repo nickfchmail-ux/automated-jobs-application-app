@@ -6,7 +6,7 @@ import type {
 import { evaluateSingleJobWithLLM } from "./ai.js";
 import { buildSingleJobPrompt } from "./prompts.js";
 import { fetchResumeText, sanitizeResume } from "./resume.js";
-import { enqueueDocumentRequest } from "./serviceBus.js";
+import { enqueueDocumentRequest } from "./storageQueue.js";
 import { getSupabase } from "./supabase.js";
 
 /**

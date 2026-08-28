@@ -1,4 +1,4 @@
-import { InvocationContext, ServiceBusQueueHandler } from "@azure/functions";
+import { InvocationContext, StorageQueueHandler } from "@azure/functions";
 import {
   generateCoverLetterForJob,
   generateTailoredResume,
@@ -8,24 +8,31 @@ import { getSupabase } from "../lib/supabase.js";
 import type { DocumentRequestMessage } from "../shared/types.js";
 
 /**
- * Service Bus queue trigger for BOTH document queues:
+ * Storage Queue trigger for BOTH document queues:
  *
  *   - `resume-requests`       → resumeWorker       (generates a tailored resume)
  *   - `cover-letter-requests` → coverLetterWorker  (generates a cover letter)
  *
  * Each message is `{ type, jobId, userId, runId, version?, basedOn? }`. On
  * failure the worker writes a `failed` status + error to the job row AND the
- * `document_versions` row (scoped to the user), then RETHROWS so Service Bus
- * retries with backoff (maxDeliveryCount caps it).
+ * `document_versions` row (scoped to the user), then RETHROWS so the storage
+ * queue trigger retries with backoff (maxDequeueCount caps it).
  *
  * These are fully independent of evaluation: generating a resume never
  * depends on a cover letter (or vice-versa), and neither depends on the
  * evaluation queue.
+ *
+ * Storage queue messages arrive as a JSON STRING — parse it into the
+ * DocumentRequestMessage shape.
  */
-export const resumeWorker: ServiceBusQueueHandler<
+export const resumeWorker: StorageQueueHandler<
   DocumentRequestMessage
 > = async (msg: DocumentRequestMessage, context: InvocationContext) => {
-  const { type, jobId, userId, version } = msg ?? {};
+  const parsed =
+    typeof msg === "string"
+      ? (JSON.parse(msg) as DocumentRequestMessage)
+      : msg;
+  const { type, jobId, userId, version } = parsed ?? {};
   if (type !== "resume" || !jobId || !userId) {
     context.error(`resumeWorker: malformed message`);
     return;
@@ -33,7 +40,7 @@ export const resumeWorker: ServiceBusQueueHandler<
   context.log(`resumeWorker start: job=${jobId} user=${userId}`);
 
   try {
-    await generateTailoredResume(msg, (m) => context.log(`[resume] ${m}`));
+    await generateTailoredResume(parsed, (m) => context.log(`[resume] ${m}`));
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : "Resume generation failed";
     context.error(`resumeWorker failed: job=${jobId} ${errMsg}`);
@@ -53,10 +60,14 @@ export const resumeWorker: ServiceBusQueueHandler<
   }
 };
 
-export const coverLetterWorker: ServiceBusQueueHandler<
+export const coverLetterWorker: StorageQueueHandler<
   DocumentRequestMessage
 > = async (msg: DocumentRequestMessage, context: InvocationContext) => {
-  const { type, jobId, userId, version } = msg ?? {};
+  const parsed =
+    typeof msg === "string"
+      ? (JSON.parse(msg) as DocumentRequestMessage)
+      : msg;
+  const { type, jobId, userId, version } = parsed ?? {};
   if (type !== "cover-letter" || !jobId || !userId) {
     context.error(`coverLetterWorker: malformed message`);
     return;
@@ -64,7 +75,7 @@ export const coverLetterWorker: ServiceBusQueueHandler<
   context.log(`coverLetterWorker start: job=${jobId} user=${userId}`);
 
   try {
-    await generateCoverLetterForJob(msg, (m) =>
+    await generateCoverLetterForJob(parsed, (m) =>
       context.log(`[cover-letter] ${m}`),
     );
   } catch (e) {

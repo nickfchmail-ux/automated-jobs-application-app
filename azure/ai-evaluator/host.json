@@ -5,18 +5,16 @@
     "version": "[4.*, 5.0.0)"
   },
   "extensions": {
-    "serviceBus": {
-      // Each Service Bus message = ONE function invocation. Azure Functions
-      // NATIVELY scales out queue triggers (target-based scaling by queue
-      // length), so 20 users generating resumes/cover letters = 20 invocations
-      // spread across instances — each triggered by its own function call.
-      //
-      // maxConcurrentCalls is the PER-INSTANCE cap, NOT a global limit. A
-      // healthy per-instance value (8) lets each scaled instance process many
-      // generations in parallel; Azure adds instances as the queue grows, so
-      // 20 messages are handled in parallel, not queued behind a small pool.
-      "maxConcurrentCalls": 8,
-      "prefetchCount": 16
+    "queues": {
+      // Storage Queue triggers (FREE replacement for Service Bus).
+      // messageEncoding base64 matches what the producer base64-encodes.
+      // visibilityTimeout gives the slow LLM workers (resume/cover-letter
+      // generation) time to finish before a message is re-delivered.
+      "visibilityTimeout": "00:05:00",
+      "maxDequeueCount": 5,
+      "batchSize": 8,
+      "newBatchThreshold": 4,
+      "messageEncoding": "base64"
     }
   },
   "functions": [

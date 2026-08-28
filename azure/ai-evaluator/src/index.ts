@@ -57,24 +57,24 @@ app.http("enhanceRefinement", {
   handler: enhanceRefinement,
 });
 
-app.serviceBusQueue("evaluateWorker", {
+app.storageQueue("evaluateWorker", {
   queueName: "evaluation-requests",
-  // Functions host resolves this to ServiceBus__fullyQualifiedNamespace +
-  // ServiceBus__credential=managedidentity (the evaluator's OWN service bus).
-  connection: "ServiceBus",
+  // Storage Queues live in the Function App's existing host storage
+  // (AzureWebJobsStorage) — FREE, no separate service, no plan upgrade.
+  connection: "AzureWebJobsStorage",
   handler: evaluateWorker,
 });
 
 // ── Independent document queues (each artifact scales/retries on its own) ──
-app.serviceBusQueue("resumeWorker", {
+app.storageQueue("resumeWorker", {
   queueName: "resume-requests",
-  connection: "ServiceBus",
+  connection: "AzureWebJobsStorage",
   handler: resumeWorker,
 });
 
-app.serviceBusQueue("coverLetterWorker", {
+app.storageQueue("coverLetterWorker", {
   queueName: "cover-letter-requests",
-  connection: "ServiceBus",
+  connection: "AzureWebJobsStorage",
   handler: coverLetterWorker,
 });
 

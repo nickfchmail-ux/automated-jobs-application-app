@@ -16,7 +16,7 @@
   "dependencies": {
     "@azure/functions": "^4.7.0",
     "@azure/identity": "^4.13.2",
-    "@azure/service-bus": "^7.9.5",
+    "@azure/storage-queue": "^12.24.0",
     "@supabase/supabase-js": "^2.98.0",
     "dotenv": "^17.3.1",
     "mammoth": "^1.8.0",

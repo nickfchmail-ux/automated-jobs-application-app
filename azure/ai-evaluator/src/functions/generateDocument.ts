@@ -8,7 +8,7 @@ import {
   markDocumentVersionBuilding,
   nextDocumentVersion,
 } from "../lib/documentVersions.js";
-import { enqueueDocumentRequest } from "../lib/serviceBus.js";
+import { enqueueDocumentRequest } from "../lib/storageQueue.js";
 import { getSupabase } from "../lib/supabase.js";
 import {
   consumeUsage,
