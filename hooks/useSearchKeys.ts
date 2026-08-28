@@ -47,15 +47,27 @@ export function useSearchKeys(
 
   useEffect(() => {
     let alive = true;
-    void (async () => {
+
+    async function load() {
       const res = await listSearchKeysAction(runId);
       if (!alive) return;
       setLoaded(true);
       if (res.ok) setKeys(res.keys);
       else setKeys([]);
-    })();
+    }
+
+    void load();
+
+    // Poll periodically so the dropdown's unevaluated counts stay in sync
+    // with the live run — jobs keep landing in Supabase after the page loads,
+    // and without a refresh the dropdown would show a stale snapshot (e.g.
+    // "15 to match" while the run has already found 30). A modest interval
+    // keeps the counts current without hammering the DB while idle.
+    const interval = setInterval(load, 20_000);
+
     return () => {
       alive = false;
+      clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, runCompleted, refreshKey]);

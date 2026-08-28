@@ -63,6 +63,20 @@ function deriveRunState(
     };
   }
 
+  // Any run that has been in a non-terminal, "active-looking" state for longer
+  // than the stall threshold is treated as stalled — NOT actively searching.
+  // A run that found jobs (unique > 0) but never reached a terminal state
+  // (e.g. crashed mid-way, server suspended, or from an interrupted test)
+  // would otherwise show "Searching the job boards…" forever, even hours or
+  // days later. Age-check BEFORE the active labels so history reads correctly.
+  const activeLooking =
+    (counts.processing || 0) > 0 ||
+    (counts.analysed || 0) > 0 ||
+    (counts.unique || 0) > 0;
+  if (activeLooking && ageMin >= STALL_AFTER_MIN) {
+    return { ...STALL_COPY, tone: "stalled" };
+  }
+
   // Actively loading details for at least one job.
   if ((counts.processing || 0) > 0) {
     return {
