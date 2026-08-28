@@ -8,7 +8,7 @@ import {
 import { computeActualPostedTimestamp, formatDate } from "@/lib/dateUtils";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function detectSourceName(url: string): string {
   if (url.includes("jobsdb.com")) return "JobsDB";
@@ -106,25 +106,31 @@ export default function FitFilters({
   const [keyFilter, setKeyFilter] = useState("All");
   const [appliedFilter, setAppliedFilter] = useState("Not Applied");
   // View mode (table vs card). Persisted to localStorage so the user's choice
-  // survives navigating to a job and back — and rendered IMMEDIATELY (no
-  // "table first, then card" flash on mobile).
+  // survives navigating to a job and back.
   //
-  // We initialize from the client preference on first render (NOT a stable
-  // "table") so a mobile user in card view sees CARDS from the very first
-  // paint. The server renders "table" (it can't read localStorage/viewport);
-  // to avoid a React #418 hydration crash from that intentional mismatch, the
-  // grid/table container below has `suppressHydrationWarning` — React keeps
-  // the client's correct view and only warns.
-  const [viewMode, setViewMode] = useState<"table" | "card">(() => {
-    if (typeof window === "undefined") return "table"; // server
+  // HYDRATION-SAFE: the state ALWAYS starts at "table" — on both the server
+  // AND the first client render — so React never sees a mismatched tree
+  // (which would throw #418 even with suppressHydrationWarning). After mount,
+  // we apply the client's saved preference (or viewport default for mobile)
+  // in an effect, so the user's choice still applies — just one frame later.
+  // No flash: the grid/table container is identical in both states.
+  const [viewMode, setViewMode] = useState<"table" | "card">("table");
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    // Client-only: read the persisted preference and apply it once mounted.
     try {
       const saved = localStorage.getItem("jobseek:matches-view");
-      if (saved === "card" || saved === "table") return saved;
+      if (saved === "card" || saved === "table") {
+        setViewMode(saved);
+      } else if (window.innerWidth < 768) {
+        setViewMode("card");
+      }
     } catch {
       // non-fatal
     }
-    return window.innerWidth < 768 ? "card" : "table";
-  });
+    setHasMounted(true);
+  }, []);
 
   const changeViewMode = (mode: "table" | "card") => {
     setViewMode(mode);
@@ -304,13 +310,9 @@ export default function FitFilters({
         </div>
       </div>
 
-      {/* Grid / Table */}
-      {/* suppressHydrationWarning: the card/table choice is read from
-          localStorage/viewport on the client, which may differ from the
-          server's "table" default. This container reconciles that so a
-          mobile user in card view sees CARDS immediately (no table→card
-          flash) without a hydration crash. */}
-      <div suppressHydrationWarning>
+      {/* Grid / Table — hydration-safe: viewMode always starts at "table"
+          on both server and client, so the tree matches; the client's
+          saved card/table preference is applied after mount. */}
         {filtered.length === 0 ? (
         <div className="text-center py-20 text-zinc-400 dark:text-zinc-500">
           <svg
@@ -427,7 +429,6 @@ export default function FitFilters({
           </table>
         </div>
       )}
-      </div>
     </div>
   );
 }
