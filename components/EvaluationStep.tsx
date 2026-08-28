@@ -42,16 +42,25 @@ function normalizeKey(s: string): string {
 export default function EvaluationStep() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { runId, keyword, evaluationStatus, evaluationRuns } = useSelector(
-    (s: RootState) => s.run,
-  );
+  const { runId, keyword, phase, evaluationStatus, evaluationRuns } =
+    useSelector((s: RootState) => s.run);
   const [, startTransition] = useTransition();
 
   // ALWAYS load the account-wide search keys with unevaluated posts — the
   // match control must be visible whenever there's anything left to match,
   // even after a page reload (when Redux has no active run). `runId` is only
   // used to highlight the current search's key.
-  const { keys, reload, loaded } = useSearchKeys(runId, true, evaluationStatus);
+  //
+  // `refreshKey` = `${phase}|${evaluationStatus}` so the dropdown reloads
+  // when a SEARCH completes (phase → completed/failed) as well as when an
+  // EVALUATION finishes (evaluationStatus → completed/failed). Previously it
+  // only keyed on evaluationStatus, so a freshly-finished search didn't
+  // refresh the dropdown's keys until the next 20s poll (or a page refresh).
+  const { keys, reload, loaded } = useSearchKeys(
+    runId,
+    true,
+    `${phase}|${evaluationStatus}`,
+  );
   const [selected, setSelected] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
