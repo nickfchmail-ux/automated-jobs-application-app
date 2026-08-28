@@ -456,9 +456,16 @@ export default function EvaluationStep() {
   // can report account-wide "evaluating" (some other batch active) with no
   // in-flight match here — without this guard the panel would sit on
   // "Starting your match…" forever even though nothing is running.
+  //
+  // IMPORTANT: we do NOT gate on `!scopedDone` here. The batch rows can be
+  // marked `completed` (processed == total) while the pipeline's evaluation
+  // status is still "evaluating" and job fit_scores are still being written.
+  // If we required `!scopedDone`, the UI would drop the live progress table
+  // and jump to the "done" confirmation prematurely — exactly the "it said
+  // done with 24 posts while it was still processing" bug. The live view
+  // stays until the OVERALL evaluation status leaves evaluating.
   if (
     evaluationActive &&
-    !scopedDone &&
     !dismissed &&
     (matchInFlight || scopedRuns.length > 0)
   ) {
@@ -523,7 +530,13 @@ export default function EvaluationStep() {
   // batch data for the matched key (not a stale account-wide status), so it's
   // safe to show even on a fresh page load where the match already finished —
   // the "Back to match" button is always available to return to the dropdown.
-  if (scopedDone && !dismissed) {
+  //
+  // We also require `!evaluationActive`: while the pipeline's overall
+  // evaluation_status is still "evaluating", jobs are STILL being scored —
+  // showing "done" then is misleading (the "it said 24 done while processing"
+  // bug). The live progress view above takes precedence until the pipeline
+  // actually finalizes.
+  if (scopedDone && !evaluationActive && !dismissed) {
     return (
       <div className="space-y-4">
         {keys.length > 0 ? (
