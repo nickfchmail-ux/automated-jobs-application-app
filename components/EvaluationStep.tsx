@@ -216,13 +216,25 @@ export default function EvaluationStep() {
 
   // Auto-refresh keys once evaluation reaches a terminal state — this drops
   // the just-matched key (now fully scored) and surfaces any remaining keys.
+  //
+  // We refresh on EITHER signal:
+  //   • `evaluationStatus` becomes "completed"/"failed" (Redux/socket),
+  //   • OR `scopedDone` flips true (the batch data itself is all terminal).
+  // The second matters because the completion UI is driven by `scopedDone` —
+  // the socket "completed" event can be missed, leaving evaluationStatus at
+  // "evaluating" while the batches are actually done. Without this, the just-
+  // matched key would linger in the dropdown until a page refresh.
   useEffect(() => {
-    if (evaluationStatus === "completed" || evaluationStatus === "failed") {
+    if (
+      evaluationStatus === "completed" ||
+      evaluationStatus === "failed" ||
+      scopedDone
+    ) {
       const t = setTimeout(() => void refreshKeys(), 1200);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evaluationStatus]);
+  }, [evaluationStatus, scopedDone]);
 
   // Reset the in-flight flag once the scoped match is done. On success we
   // deliberately KEEP `evalRequesting` true while the progress view is up so
