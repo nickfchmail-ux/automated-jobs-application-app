@@ -394,7 +394,7 @@ export default async function OverviewPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <Link
-                            href={`/jobs/${m.id}/fit`}
+                            href={`/jobs/${m.id}`}
                             className="font-medium text-[var(--ink)] hover:underline truncate"
                           >
                             {m.title}
@@ -432,7 +432,7 @@ export default async function OverviewPage() {
                           </p>
                         )}
                         <Link
-                          href={`/jobs/${m.id}/fit`}
+                          href={`/jobs/${m.id}`}
                           className="mt-1 inline-block text-xs font-semibold text-[var(--accent-ink)] hover:underline"
                         >
                           Open →

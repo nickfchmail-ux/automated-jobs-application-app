@@ -63,15 +63,9 @@ async function refreshTokens(
         body: JSON.stringify({ refresh_token: refreshToken }),
         signal: controller.signal,
       });
-      // A 401 means the refresh token itself is invalid/expired → the session
-      // is genuinely gone → return a marker so the caller forces logout.
-      // A 500 / network error is a TRANSIENT backend/Supabase failure (e.g.
-      // an incident) — the token may still be fine, so we must NOT log the
-      // user out. Return a distinct sentinel so the caller can keep them in.
-      if (res.status === 401) return { access_token: "__invalid__" };
-      if (!res.ok) return "__transient__" as never; // 5xx / other
+      if (!res.ok) return null;
       const data = await res.json();
-      if (!data?.access_token) return "__transient__" as never;
+      if (!data?.access_token) return null;
       return {
         access_token: data.access_token,
         refresh_token: data.refresh_token,
@@ -81,8 +75,7 @@ async function refreshTokens(
     }
   } catch (e) {
     console.error("[proxy] token refresh failed:", e);
-    // Network error / timeout → transient, not a real logout condition.
-    return "__transient__" as never;
+    return null;
   }
 }
 
@@ -120,16 +113,6 @@ export async function proxy(request: NextRequest) {
   //    signed in past the ~1h Supabase access-token lifetime.
   if (refreshToken) {
     const fresh = await refreshTokens(refreshToken);
-    // Genuinely invalid refresh token → the session is truly gone → logout.
-    if (fresh?.access_token === "__invalid__") {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("from", pathname);
-      const response = NextResponse.redirect(loginUrl);
-      if (token) response.cookies.delete("token");
-      if (refreshToken) response.cookies.delete("refresh_token");
-      return response;
-    }
-    // Successful refresh → set fresh cookies and continue.
     if (fresh?.access_token) {
       const response = NextResponse.next();
       response.cookies.set("token", fresh.access_token, COOKIE_OPTS);
@@ -138,10 +121,6 @@ export async function proxy(request: NextRequest) {
       }
       return response;
     }
-    // "__transient__" (backend 5xx / network / timeout) — the token may still
-    // be valid; do NOT log the user out. Let the request through; the server
-    // actions will surface any genuine auth error via fetchWithAuth.
-    return NextResponse.next();
   }
 
   // 5) Genuinely expired/invalid and refresh failed (or no refresh token) →

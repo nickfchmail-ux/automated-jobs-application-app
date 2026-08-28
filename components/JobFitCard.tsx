@@ -69,12 +69,11 @@ export default function JobFitCard({
           </svg>
           <div>
             <h2 className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-              This job hasn&apos;t been scored yet.
+              Matching this job against your resume…
             </h2>
             <p className="text-xs text-blue-500 dark:text-blue-400 mt-0.5">
-              Go to the Search page and click{" "}
-              <span className="font-medium">Match</span> for the search key
-              that found this job to see how well it fits your profile.
+              We&apos;re scoring how well this role fits your profile. This page
+              updates automatically — you don&apos;t need to refresh.
             </p>
           </div>
         </div>

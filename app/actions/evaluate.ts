@@ -201,22 +201,12 @@ export async function listSearchKeysAction(
     // Fetch search_key + fit_score + pipeline_run_id for ALL the user's jobs
     // that made it through scraping. We group account-wide so every search
     // key with unevaluated posts shows up, not just the current run's.
-    //
-    // IMPORTANT: we include jobs in EVERY processing state (queued, scraping,
-    // processing, enriching, analysing, completed, failed) — NOT just
-    // completed/analysed. A freshly-scraped job starts as `queued` and only
-    // reaches `completed` after the Azure pipeline enriches it; if we filtered
-    // on status, newly-scraped jobs would be invisible in the match dropdown
-    // until they finished processing (the "dropdown isn't synced until
-    // refresh" bug). The real signal for "needs matching" is `fit_score IS
-    // NULL` — regardless of status. We only exclude `duplicate` rows.
     const supabase = requireServiceClient();
     const { data: scored, error: scoredErr } = await supabase
       .from("jobs")
       .select("search_key, fit_score, pipeline_run_id")
       .eq("user_id", userId)
-      .neq("status", "duplicate")
-      .is("fit_score", null);
+      .in("status", ["completed", "analysed"]);
 
     if (scoredErr) {
       console.error(
