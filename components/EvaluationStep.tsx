@@ -554,6 +554,13 @@ export default function EvaluationStep() {
               was matched. {completedFit} great fit
               {completedFit !== 1 ? "s" : ""} ready to review.
             </div>
+            {/* Keep the completed progress table visible so the user sees
+                the final per-keyword results instead of the panel vanishing
+                ("the table disappears" bug). */}
+            <EvaluationProgress
+              activeKey={selected}
+              runId={activeRunId}
+            />
             {renderSelector()}
           </>
         ) : (
