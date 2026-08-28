@@ -10,11 +10,13 @@ import { useEffect } from "react";
  * job card/row from a scrolled matches list loads the detail page mid-scroll
  * — that's the "shift" users see.
  *
- * IMPORTANT: a plain `useEffect` fires BEFORE Next.js's router re-applies the
- * preserved scroll position after a client navigation, so a single scrollTo
- * gets overwritten. We therefore scroll immediately AND again on the next two
- * animation frames, which reliably lands AFTER Next's scroll restoration.
- * Back/forward (popstate) is untouched — this only forces top on forward nav.
+ * WHY MULTIPLE PASSES: a plain `useEffect` scrollTo fires BEFORE Next.js's
+ * router re-applies the preserved scroll position, so a single scrollTo gets
+ * overwritten. We therefore scroll immediately, again on the next two
+ * animation frames (after Next's restore), and once more after a short delay
+ * to catch content that loads after the route settles (Supabase-driven
+ * sections add height and can push the viewport back down). Back/forward
+ * (popstate) is untouched — this only forces top on forward nav.
  */
 export default function ScrollJobDetailToTop() {
   const pathname = usePathname();
@@ -38,7 +40,16 @@ export default function ScrollJobDetailToTop() {
       requestAnimationFrame(toTop);
     });
 
-    return () => cancelAnimationFrame(raf1);
+    // Late pass: catch content that loads after the route settles (e.g. the
+    // Supabase-driven resume/cover-letter sections adding page height).
+    const t1 = window.setTimeout(toTop, 120);
+    const t2 = window.setTimeout(toTop, 400);
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
   }, [pathname]);
 
   return null;
