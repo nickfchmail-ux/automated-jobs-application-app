@@ -25,13 +25,12 @@ import type { DocumentRequestMessage } from "../shared/types.js";
  * Storage queue messages arrive as a JSON STRING — parse it into the
  * DocumentRequestMessage shape.
  */
-export const resumeWorker: StorageQueueHandler<
-  DocumentRequestMessage
-> = async (msg: DocumentRequestMessage, context: InvocationContext) => {
+export const resumeWorker: StorageQueueHandler<DocumentRequestMessage> = async (
+  msg: DocumentRequestMessage,
+  context: InvocationContext,
+) => {
   const parsed =
-    typeof msg === "string"
-      ? (JSON.parse(msg) as DocumentRequestMessage)
-      : msg;
+    typeof msg === "string" ? (JSON.parse(msg) as DocumentRequestMessage) : msg;
   const { type, jobId, userId, version } = parsed ?? {};
   if (type !== "resume" || !jobId || !userId) {
     context.error(`resumeWorker: malformed message`);
@@ -64,9 +63,7 @@ export const coverLetterWorker: StorageQueueHandler<
   DocumentRequestMessage
 > = async (msg: DocumentRequestMessage, context: InvocationContext) => {
   const parsed =
-    typeof msg === "string"
-      ? (JSON.parse(msg) as DocumentRequestMessage)
-      : msg;
+    typeof msg === "string" ? (JSON.parse(msg) as DocumentRequestMessage) : msg;
   const { type, jobId, userId, version } = parsed ?? {};
   if (type !== "cover-letter" || !jobId || !userId) {
     context.error(`coverLetterWorker: malformed message`);

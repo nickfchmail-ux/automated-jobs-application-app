@@ -17,14 +17,14 @@ description: "JobSeek's Service Bus → Azure Storage Queue migration playbook. 
 
 ## The 6 Queues
 
-| Queue | Function App | Trigger(s) |
-|---|---|---|
-| `scrape-requests` | Scraper | `scraperWorker.ts` |
-| `jobs` | Scraper | `jobProcessor.ts` + `recoverStuckRuns.ts` |
-| `resume-builds` | Scraper | `resumeBuildWorker.ts` |
-| `evaluation-requests` | Evaluator | `evaluateWorker` (index.ts) |
-| `resume-requests` | Evaluator | `resumeWorker` (index.ts) |
-| `cover-letter-requests` | Evaluator | `coverLetterWorker` (index.ts) |
+| Queue                   | Function App | Trigger(s)                                |
+| ----------------------- | ------------ | ----------------------------------------- |
+| `scrape-requests`       | Scraper      | `scraperWorker.ts`                        |
+| `jobs`                  | Scraper      | `jobProcessor.ts` + `recoverStuckRuns.ts` |
+| `resume-builds`         | Scraper      | `resumeBuildWorker.ts`                    |
+| `evaluation-requests`   | Evaluator    | `evaluateWorker` (index.ts)               |
+| `resume-requests`       | Evaluator    | `resumeWorker` (index.ts)                 |
+| `cover-letter-requests` | Evaluator    | `coverLetterWorker` (index.ts)            |
 
 ## Key Pattern
 
@@ -41,7 +41,9 @@ export async function enqueue(name: string, body: unknown): Promise<string> {
   const id = crypto.randomUUID();
   await Promise.race([
     q(name).sendMessage(JSON.stringify(body), { messageId: id }),
-    new Promise<never>((_, rej) => setTimeout(() => rej(new Error("queue send timeout")), 20_000)),
+    new Promise<never>((_, rej) =>
+      setTimeout(() => rej(new Error("queue send timeout")), 20_000),
+    ),
   ]);
   return id;
 }

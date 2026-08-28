@@ -20,16 +20,12 @@ import type { EvaluateJobMessage } from "../shared/types.js";
  *
  * Storage queue messages arrive as a JSON STRING — parse it.
  */
-export const evaluateWorker: StorageQueueHandler<
-  EvaluateJobMessage
-> = async (
+export const evaluateWorker: StorageQueueHandler<EvaluateJobMessage> = async (
   msg: EvaluateJobMessage,
   context: InvocationContext,
 ): Promise<void> => {
   const parsed =
-    typeof msg === "string"
-      ? (JSON.parse(msg) as EvaluateJobMessage)
-      : msg;
+    typeof msg === "string" ? (JSON.parse(msg) as EvaluateJobMessage) : msg;
   const { jobId, userId, runId, evaluationRunId } = parsed ?? {};
   if (!jobId || !userId || !runId || !evaluationRunId) {
     context.error(`evaluateWorker: malformed message (missing ids)`);

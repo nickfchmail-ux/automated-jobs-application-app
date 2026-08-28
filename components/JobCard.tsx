@@ -189,8 +189,8 @@ export default function JobCard({
       <Link
         href={
           backHref
-            ? `/jobs/${job.id}?from=${encodeURIComponent(backHref)}`
-            : `/jobs/${job.id}`
+            ? `/jobs/${job.id}/fit?from=${encodeURIComponent(backHref)}`
+            : `/jobs/${job.id}/fit`
         }
         className="absolute inset-0 rounded-2xl z-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
         aria-label={`View details for ${job.title} at ${job.company}`}

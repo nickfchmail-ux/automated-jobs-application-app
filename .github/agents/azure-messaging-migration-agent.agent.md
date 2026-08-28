@@ -27,20 +27,20 @@ The app's async pipeline MUST keep working exactly as before.
 ## The Six Queues To Migrate (all become Azure Storage Queues)
 
 **Scraper Function App** (`../backend-scraping-api/azure/functions`):
+
 1. `scrape-requests` — trigger: `scraperWorker.ts`
 2. `jobs` — triggers: `jobProcessor.ts` AND `recoverStuckRuns.ts`
 3. `resume-builds` — trigger: `resumeBuildWorker.ts`
 
-**Evaluator Function App** (`azure/ai-evaluator`):
-4. `evaluation-requests` — trigger: `evaluateWorker` (index.ts)
-5. `resume-requests` — trigger: `resumeWorker` (index.ts)
-6. `cover-letter-requests` — trigger: `coverLetterWorker` (index.ts)
+**Evaluator Function App** (`azure/ai-evaluator`): 4. `evaluation-requests` — trigger: `evaluateWorker` (index.ts) 5. `resume-requests` — trigger: `resumeWorker` (index.ts) 6. `cover-letter-requests` — trigger: `coverLetterWorker` (index.ts)
 
 ## The Migration Recipe (proven pattern)
 
 ### 1. Producer helper: `serviceBus.ts` → `storageQueue.ts`
+
 Replace the `@azure/service-bus` `enqueue()` with an equivalent using
 `@azure/storage-queue` `QueueClient`:
+
 - `QueueServiceClient`/`QueueClient` created from the SAME `AzureWebJobsStorage`
   connection string the Function App already uses (env `AzureWebJobsStorage`).
 - `queueClient.sendMessage(JSON.stringify(body))` — bodies are already JSON.
@@ -54,7 +54,9 @@ Replace the `@azure/service-bus` `enqueue()` with an equivalent using
   `visibilityTimeout` (delay up to 7 days) — set visibility to the delay.
 
 ### 2. Trigger: `app.serviceBusQueue(...)` → `app.storageQueue(...)`
+
 In the v4 Node model:
+
 ```ts
 app.storageQueue("scrape-requests", {
   queueName: "scrape-requests",
@@ -62,6 +64,7 @@ app.storageQueue("scrape-requests", {
   handler: async (message: unknown, context: InvocationContext) => { ... },
 });
 ```
+
 - `connection` MUST be `AzureWebJobsStorage` (the required host storage).
 - The `recoverStuckRuns` timer ALSO listens on `jobs` — keep that working by
   pointing its `app.storageQueue` at the same queue name.
@@ -69,10 +72,12 @@ app.storageQueue("scrape-requests", {
   queue triggers — JSON.parse it (the SB handler got an object; adjust).
 
 ### 3. Dependencies: remove `@azure/service-bus`, add `@azure/storage-queue`
+
 Both function apps' `package.json`. Also remove `@azure/identity` ONLY if
 nothing else uses it (the evaluator may use it for other things — check first).
 
 ### 4. Infra (Bicep): remove Service Bus, keep Storage
+
 - `backend-scraping-api/azure/infra/main.bicep`: remove the Service Bus namespace
   resource + queues + RBAC role assignments. The storage account already exists
   (Function host storage) — Storage Queues live there. **Do NOT delete the
@@ -81,6 +86,7 @@ nothing else uses it (the evaluator may use it for other things — check first)
 - Remove `ServiceBus__*` app settings from both function apps.
 
 ### 5. App settings
+
 - Remove `ServiceBus__fullyQualifiedNamespace`, `ServiceBus__credential`,
   `ServiceBus__connectionString`, `EvaluationQueue`/`ResumeQueue`/`CoverLetterQueue`
   (evaluator queue names are hardcoded now) from `local.settings.json` and deployed

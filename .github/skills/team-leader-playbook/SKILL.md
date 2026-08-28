@@ -22,8 +22,8 @@ JobSeek Team Leader (routing, validation gate, day-to-day)
         │ delegates to specialists
 user-agent · product-owner-agent · ux-agent · frontend-ui-agent ·
 frontend-state-agent · supabase-data-agent · azure-functions-agent ·
-realtime-streaming-agent · ai-evaluation-agent · quality-testing-agent ·
-performance-optimization-agent
+azure-messaging-migration-agent · realtime-streaming-agent ·
+ai-evaluation-agent · quality-testing-agent · performance-optimization-agent
 ```
 
 **When the Architect hands you a prioritized findings list** (e.g. from a
@@ -154,6 +154,7 @@ Match the request to exactly one specialist when possible:
 | Redux / hooks / client data flow / selectors                                   | `frontend-state-agent`                                                |
 | Supabase / RLS / storage / migrations / server actions                         | `supabase-data-agent`                                                 |
 | Azure Functions / Service Bus / deployment                                     | `azure-functions-agent`                                               |
+| Service Bus → Storage Queue migration (free messaging)                         | `azure-messaging-migration-agent`                                     |
 | socket.io / Realtime / live streaming / funnel                                 | `realtime-streaming-agent`                                            |
 | AI scoring / prompts / evaluation / cover letters                              | `ai-evaluation-agent`                                                 |
 | Lint / type-check / build / a11y / perf / QA                                   | `quality-testing-agent`                                               |

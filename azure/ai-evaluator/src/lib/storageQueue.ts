@@ -49,7 +49,9 @@ function getQueue(name: string): QueueClient {
 
 /** Create the queue if it doesn't exist (idempotent) so sends never fail. */
 async function ensureQueue(name: string): Promise<void> {
-  await getQueue(name).createIfNotExists().catch(() => {});
+  await getQueue(name)
+    .createIfNotExists()
+    .catch(() => {});
 }
 
 /**
@@ -112,7 +114,10 @@ export async function enqueueEvaluationJobs(
       ),
     ),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Storage Queue send timed out")), 20_000),
+      setTimeout(
+        () => reject(new Error("Storage Queue send timed out")),
+        20_000,
+      ),
     ),
   ]);
 }

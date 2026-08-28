@@ -12,6 +12,7 @@ agents:
     frontend-state-agent,
     supabase-data-agent,
     azure-functions-agent,
+    azure-messaging-migration-agent,
     realtime-streaming-agent,
     ai-evaluation-agent,
     quality-testing-agent,

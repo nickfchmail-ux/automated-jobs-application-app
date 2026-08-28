@@ -77,9 +77,9 @@ d:\Workstation\automated-jobs\backend-scraping-api\
 
 ## Key Facts (verify against source — these can change)
 
-- **Base URLs:** Express `https://ai-job-server.onrender.com` · Azure Functions
+- **Base URLs:** Express `https://ai-job-server-r2dk.onrender.com` · Azure Functions
   `https://jobsautomation-fn.azurewebsites.net` · Supabase
-  `https://uqrgivzeklqehuqqqqyv.supabase.co` · WebSocket `wss://ai-job-server.onrender.com`
+  `https://uqrgivzeklqehuqqqqyv.supabase.co` · WebSocket `wss://ai-job-server-r2dk.onrender.com`
 - **Auth:** `Authorization: Bearer <access_token>` (Supabase JWT). Azure function
   calls use `x-functions-key`. Refresh proactively; on 401 refresh then retry.
 - **Trigger a scrape:** `POST /api/scrape` (Azure fn, `x-functions-key`) with

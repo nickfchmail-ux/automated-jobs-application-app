@@ -90,7 +90,7 @@ plus `nexus-ui` (victorcodess).
 ### Render
 
 - The **Express API** the frontend talks to is deployed on **Render**
-  (`ai-job-server.onrender.com`) — but that's the OTHER team's backend; we don't
+  (`ai-job-server-r2dk.onrender.com`) — but that's the OTHER team's backend; we don't
   deploy it.
 - If we ever deploy OUR app to Render, search `npx skills find render` for an
   official skill first. As of 2026-08-23 there is no widely-adopted "render deploy"

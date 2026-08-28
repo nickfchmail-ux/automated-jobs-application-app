@@ -1,10 +1,10 @@
 /* ------------------------------------------------------------------ */
 /*  Types for the Jobs Automation Platform APIs                        */
 /*                                                                     */
-/*  - Express API server : https://ai-job-server.onrender.com          */
+/*  - Express API server : https://ai-job-server-r2dk.onrender.com  */
 /*  - Azure Functions    : https://jobsautomation-fn.azurewebsites.net */
 /*  - Supabase           : https://uqrgivzeklqehuqqqqyv.supabase.co    */
-/*  - WebSocket (socket.io) : wss://ai-job-server.onrender.com         */
+/*  - WebSocket (socket.io) : wss://ai-job-server-r2dk.onrender.com */
 /* ------------------------------------------------------------------ */
 
 // ── Auth ──────────────────────────────────────────────────────────

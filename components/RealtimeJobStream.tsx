@@ -205,7 +205,7 @@ export default function RealtimeJobStream({
                         )}
                       {job.url && (
                         <Link
-                          href={`/jobs/${row.id}`}
+                          href={`/jobs/${row.id}/fit`}
                           className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
                         >
                           View →

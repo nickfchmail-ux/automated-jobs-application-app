@@ -47,8 +47,8 @@ A Next.js app that scrapes job listings, **AI-evaluates each job against your re
    # Public — safe in the browser bundle
    NEXT_PUBLIC_SUPABASE_URL=https://uqrgivzeklqehuqqqqyv.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-   NEXT_PUBLIC_API_SERVER=https://ai-job-server.onrender.com
-   NEXT_PUBLIC_WS_URL=wss://ai-job-server.onrender.com
+   NEXT_PUBLIC_API_SERVER=https://ai-job-server-r2dk.onrender.com
+   NEXT_PUBLIC_WS_URL=wss://ai-job-server-r2dk.onrender.com
    NEXT_PUBLIC_AZURE_FN_URL=https://jobsautomation-fn.azurewebsites.net
    NEXT_PUBLIC_EVALUATOR_URL=https://jobsautomation-evaluator.azurewebsites.net
 
