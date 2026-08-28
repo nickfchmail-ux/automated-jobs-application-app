@@ -48,17 +48,35 @@ export async function fetchWithAuth(
   const refreshToken = cookieStore.get("refresh_token")?.value;
   if (!refreshToken) return res; // no refresh token available
 
-  const refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
+  let refreshRes: Response;
+  try {
+    refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch (err) {
+    // Network error / timeout → TRANSIENT (Supabase incident, backend down).
+    // The token may still be valid — do NOT clear cookies / force logout.
+    console.error("[fetchWithAuth] refresh network error (not logging out):", err);
+    return res;
+  }
 
-  if (!refreshRes.ok) {
-    // Refresh token is invalid or expired — force re-login
+  if (refreshRes.status === 401) {
+    // Genuinely invalid/expired refresh token → the session is truly gone.
+    // Clear cookies so the middleware redirects to /login on next nav.
     cookieStore.delete("token");
     cookieStore.delete("refresh_token");
     return res; // return the original 401
+  }
+
+  if (!refreshRes.ok) {
+    // 5xx / other transient failure (backend or Supabase incident) — the
+    // session may still be valid. Keep cookies; surface the original error.
+    console.error(
+      `[fetchWithAuth] refresh ${refreshRes.status} (transient, keeping session)`,
+    );
+    return res;
   }
 
   const { access_token, refresh_token } = await refreshRes.json();
