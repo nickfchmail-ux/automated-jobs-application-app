@@ -13,6 +13,52 @@
  */
 const STATE_WEBHOOK_URL = process.env.STATE_WEBHOOK_URL ?? "";
 const STATE_WEBHOOK_SECRET = process.env.STATE_WEBHOOK_SECRET ?? "";
+// The webhook host also exposes /webhook/invalidate, which deletes the
+// backend's Redis caches (eval-state, latest-run, run-board-detail). The
+// eval-state cache is TTL 20s — without invalidation a finished batch can
+// keep reporting "evaluating" over the socket for up to 20s, which the
+// frontend reads as a stuck match.
+function webhookHost(): string {
+  const url = STATE_WEBHOOK_URL;
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    u.pathname = "";
+    u.search = "";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Best-effort: tell the backend to drop its Redis caches for a user so the
+ * NEXT `/webhook/state` push recomputes fresh (not 20s-stale) fit/not-fit
+ * counts and the run's terminal status. Never throws.
+ */
+export async function invalidateStateCache(
+  userId: string,
+  runId?: string,
+): Promise<void> {
+  const host = webhookHost();
+  if (!host || !userId) return;
+  try {
+    await fetch(`${host}/webhook/invalidate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(STATE_WEBHOOK_SECRET
+          ? { "x-webhook-secret": STATE_WEBHOOK_SECRET }
+          : {}),
+      },
+      body: JSON.stringify({ userId, ...(runId ? { runId } : {}) }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    // non-fatal — invalidation is best-effort; TTL still clears it eventually
+    console.warn(`[evaluator] invalidateStateCache failed: ${err}`);
+  }
+}
 
 /**
  * Best-effort: tell the backend to push the latest state to a user's

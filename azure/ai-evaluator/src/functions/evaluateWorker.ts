@@ -1,6 +1,9 @@
 import { InvocationContext, StorageQueueHandler } from "@azure/functions";
 import { evaluateSingleJob } from "../lib/evaluateJob.js";
-import { notifyStateChange } from "../lib/socket.js";
+import {
+  invalidateStateCache,
+  notifyStateChange,
+} from "../lib/socket.js";
 import {
   incrementEvaluationRun,
   setPipelineRunEvaluationStatus,
@@ -92,6 +95,12 @@ export const evaluateWorker: StorageQueueHandler<EvaluateJobMessage> = async (
         finalErr,
       ).catch((e) =>
         context.error(`finalize run ${runId} failed: ${e.message}`),
+      );
+      // Drop the backend's Redis caches so the push below (and any later
+      // status poll) reads FRESH fit/not-fit + terminal status instead of a
+      // 20s-stale "evaluating" snapshot.
+      await invalidateStateCache(userId, runId).catch((e) =>
+        context.error(`invalidate cache ${runId} failed: ${e.message}`),
       );
       await notifyStateChange(userId, runId);
     }

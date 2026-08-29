@@ -375,6 +375,12 @@ export default function EvaluationStep() {
           dispatch(
             evaluationStatusUpdated(anyProcessed ? "completed" : "failed"),
           );
+          // The batch(es) are all terminal — the evaluation is over. Reset
+          // the in-flight flag so the button never sticks on "Starting…".
+          // (The `scopedDone` effect below also resets it, but if the scoped
+          // batch data is stale/missing this guarantees the selector is
+          // usable again.)
+          setEvalRequesting(false);
         }
         return; // REST is authoritative — skip the DB fallback
       }
@@ -738,8 +744,14 @@ export default function EvaluationStep() {
                 type="button"
                 aria-haspopup="listbox"
                 aria-expanded={dropdownOpen}
+                disabled={matchInFlight || evalRequesting}
                 onClick={() => setDropdownOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 px-4 py-2.5 text-sm text-[var(--ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                title={
+                  matchInFlight || evalRequesting
+                    ? "Wait for the current match to finish before switching keys."
+                    : undefined
+                }
+                className="w-full flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-white dark:bg-zinc-900 px-4 py-2.5 text-sm text-[var(--ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <span className="truncate">
                   {selectedKey ? (
