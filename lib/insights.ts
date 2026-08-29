@@ -181,7 +181,7 @@ type RpcInsights = Partial<{
 }>;
 
 /** Defensive fillers so a partial/empty RPC result still satisfies the contract. */
-const EMPTY_INSIGHTS: Insights = {
+export const EMPTY_INSIGHTS: Insights = {
   totals: {
     scraped: 0,
     evaluated: 0,

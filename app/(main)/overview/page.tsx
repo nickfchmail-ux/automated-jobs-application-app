@@ -8,7 +8,7 @@ import {
 } from "@/components/motion";
 import PageHeader from "@/components/PageHeader";
 import { getUserId } from "@/lib/auth";
-import { getInsights } from "@/lib/insights";
+import { EMPTY_INSIGHTS, getInsights } from "@/lib/insights";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -16,6 +16,30 @@ import type { CSSProperties } from "react";
 export const revalidate = 0;
 
 export const metadata = { title: "Overview" };
+
+/** Timeout for the insights RPC (ms).
+ *
+ * get_user_insights is a heavy aggregation (regex-tokenizes every fit_reason
+ * across all the user's jobs — can take 9s+ on a busy account). If it doesn't
+ * resolve in this window, render the dashboard with an empty insights state so
+ * the page NEVER hangs on its loading skeleton. The header/nav already paint
+ * from the layout; this just bounds the analytics section.
+ */
+const INSIGHTS_TIMEOUT_MS = 4000;
+
+async function withTimeout<T>(p: Promise<T>, fallback: T, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /** Format a monthly HKD figure as a compact salary string. */
 function formatSalary(v: number): string {
@@ -37,7 +61,14 @@ export default async function OverviewPage() {
   const userId = await getUserId();
   if (!userId) redirect("/login");
 
-  const insights = await getInsights(userId);
+  // Bound the heavy insights RPC — a slow/degraded Supabase must never leave
+  // the dashboard stuck on "Loading…". On timeout we render the shell with
+  // empty analytics (the header/nav + "Search jobs" CTA still paint).
+  const insights = await withTimeout(
+    getInsights(userId),
+    EMPTY_INSIGHTS,
+    INSIGHTS_TIMEOUT_MS,
+  );
 
   const total = insights.totals;
   const matchRate =
