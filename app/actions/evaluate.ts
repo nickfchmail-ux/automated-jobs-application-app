@@ -198,73 +198,103 @@ export async function listSearchKeysAction(
   if (!userId) return { ok: false, error: "Not authenticated." };
 
   try {
-    // Fetch search_key + fit_score + pipeline_run_id for ALL the user's jobs
-    // that made it through scraping. We group account-wide so every search
-    // key with unevaluated posts shows up, not just the current run's.
+    // Group account-wide so every search key with unevaluated posts shows up,
+    // not just the current run's.
+    //
+    // AGGREGATED SERVER-SIDE: the `list_unevaluated_keys` RPC does the
+    // GROUP BY in Postgres (backed by the (user_id, fit_score) partial index),
+    // returning ONE row per key instead of fetching every unevaluated job row
+    // to the server action. On a busy/degraded Supabase the old full row-fetch
+    // (hundreds of rows) was slow and burned RUs — the search page's Match
+    // dropdown hung on "Loading…" because of it.
     //
     // IMPORTANT: we include jobs in EVERY processing state (queued, scraping,
     // processing, enriching, analysing, completed, failed) — NOT just
     // completed/analysed. A freshly-scraped job starts as `queued` and only
     // reaches `completed` after the Azure pipeline enriches it; if we filtered
-    // on status, newly-scraped jobs would be invisible in the match dropdown
-    // until they finished processing (the "dropdown isn't synced until
-    // refresh" bug). The real signal for "needs matching" is `fit_score IS
-    // NULL` — regardless of status. We only exclude `duplicate` rows.
+    // on status, newly-scraped jobs would be invisible in the match dropdown.
+    // The real signal for "needs matching" is `fit_score IS NULL`.
     const supabase = requireServiceClient();
-    const { data: scored, error: scoredErr } = await supabase
-      .from("jobs")
-      .select("search_key, fit_score, pipeline_run_id")
-      .eq("user_id", userId)
-      .neq("status", "duplicate")
-      .is("fit_score", null);
+    const { data: rows, error: rpcErr } = await supabase.rpc(
+      "list_unevaluated_keys",
+      { p_user_id: userId },
+    );
 
-    if (scoredErr) {
+    if (rpcErr) {
       console.error(
-        "[listSearchKeysAction] scored query error:",
-        scoredErr.message,
+        "[listSearchKeysAction] rpc error:",
+        rpcErr.message,
       );
-      return { ok: false, error: scoredErr.message };
-    }
-
-    const byKey = new Map<
-      string,
-      { total: number; unevaluated: number; runId: string | null }
-    >();
-    for (const row of (scored ?? []) as {
-      search_key: string | null;
-      fit_score: number | null;
-      pipeline_run_id: string | null;
-    }[]) {
-      const key = (row.search_key ?? "").trim().toLowerCase();
-      if (!key) continue;
-      const entry = byKey.get(key) ?? {
-        total: 0,
-        unevaluated: 0,
-        runId: null,
-      };
-      entry.total++;
-      if (row.fit_score === null) {
-        entry.unevaluated++;
-        // Remember a run that has unevaluated jobs under this key so we can
-        // always trigger evaluation with a valid run context.
-        if (!entry.runId && row.pipeline_run_id) {
-          entry.runId = row.pipeline_run_id;
-        }
+      // Fall back to the direct query so the dropdown still works even if the
+      // RPC is missing (e.g. not deployed yet on an older DB).
+      const { data: scored, error: scoredErr } = await supabase
+        .from("jobs")
+        .select("search_key, fit_score, pipeline_run_id")
+        .eq("user_id", userId)
+        .neq("status", "duplicate")
+        .is("fit_score", null);
+      if (scoredErr) {
+        console.error(
+          "[listSearchKeysAction] scored query error:",
+          scoredErr.message,
+        );
+        return { ok: false, error: scoredErr.message };
       }
-      byKey.set(key, entry);
+      const byKey = new Map<
+        string,
+        { total: number; unevaluated: number; runId: string | null }
+      >();
+      for (const row of (scored ?? []) as {
+        search_key: string | null;
+        fit_score: number | null;
+        pipeline_run_id: string | null;
+      }[]) {
+        const key = (row.search_key ?? "").trim().toLowerCase();
+        if (!key) continue;
+        const entry = byKey.get(key) ?? {
+          total: 0,
+          unevaluated: 0,
+          runId: null,
+        };
+        entry.total++;
+        if (row.fit_score === null) {
+          entry.unevaluated++;
+          if (!entry.runId && row.pipeline_run_id) {
+            entry.runId = row.pipeline_run_id;
+          }
+        }
+        byKey.set(key, entry);
+      }
+      const keys = [...byKey.entries()]
+        .map(([searchKey, { total, unevaluated, runId: keyRunId }]) => ({
+          searchKey,
+          keyword: searchKey.replace(/_/g, " "),
+          total,
+          unevaluated,
+          runId: keyRunId,
+        }))
+        .filter((k) => k.unevaluated > 0)
+        .sort((a, b) => b.unevaluated - a.unevaluated || b.total - a.total);
+      return { ok: true, keys, runId };
     }
 
-    const keys: SearchKeyOption[] = [...byKey.entries()]
-      .map(([searchKey, { total, unevaluated, runId: keyRunId }]) => ({
-        searchKey,
-        keyword: searchKey.replace(/_/g, " "),
-        total,
-        unevaluated,
-        runId: keyRunId,
+    const keys: SearchKeyOption[] = ((rows ?? []) as {
+      search_key: string | null;
+      unevaluated: number;
+      total: number;
+      run_id: string | null;
+    }[])
+      .map((row) => ({
+        searchKey: (row.search_key ?? "").trim().toLowerCase(),
+        keyword: (row.search_key ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/_/g, " "),
+        total: Number(row.total) || 0,
+        unevaluated: Number(row.unevaluated) || 0,
+        runId: row.run_id ?? null,
       }))
-      // Only keys that still have unevaluated posts belong in the dropdown.
-      .filter((k) => k.unevaluated > 0)
-      .sort((a, b) => b.unevaluated - a.unevaluated || b.total - a.total);
+      .filter((k) => k.searchKey && k.unevaluated > 0);
 
     return { ok: true, keys, runId };
   } catch (e) {
