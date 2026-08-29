@@ -203,17 +203,39 @@ export default function EvaluationStep() {
   // Redux runId — otherwise the progress table would filter to the wrong run
   // and show no (or all) batches. Falls back to the global run when no key
   // is selected (survives page reload when Redux has no active run).
-  const activeRunId = selectedKey?.runId ?? runId ?? null;
+  //
+  // CRITICAL: while a match is in-flight, use the runId CAPTURED at click time
+  // (matchedKeyRef.current.runId) — the batch was created under THAT run.
+  // `selectedKey?.runId` is recomputed from the dropdown keys, which refresh
+  // mid-evaluation and can point to a different run (or become undefined when
+  // the key drops out) — polling/scoping the wrong run made the progress
+  // table show all-zero even though the evaluator was progressing.
+  const activeRunId =
+    (matchInFlight ? matchedKeyRef.current?.runId : selectedKey?.runId) ??
+    runId ??
+    null;
 
   // Auto-refresh keys once evaluation reaches a terminal state — this drops
   // the just-matched key (now fully scored) and surfaces any remaining keys.
+  //
+  // We refresh on EITHER signal:
+  //   • `evaluationStatus` becomes "completed"/"failed" (Redux/socket),
+  //   • OR `scopedDone` flips true (the batch data itself is all terminal).
+  // The second matters because the completion UI is driven by `scopedDone` —
+  // the socket "completed" event can be missed, leaving evaluationStatus at
+  // "evaluating" while the batches are actually done. Without this, the just-
+  // matched key would linger in the dropdown until a page refresh.
   useEffect(() => {
-    if (evaluationStatus === "completed" || evaluationStatus === "failed") {
+    if (
+      evaluationStatus === "completed" ||
+      evaluationStatus === "failed" ||
+      scopedDone
+    ) {
       const t = setTimeout(() => void refreshKeys(), 1200);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [evaluationStatus]);
+  }, [evaluationStatus, scopedDone]);
 
   // Reset the in-flight flag once the scoped match is done. On success we
   // deliberately KEEP `evalRequesting` true while the progress view is up so
@@ -435,9 +457,16 @@ export default function EvaluationStep() {
   // can report account-wide "evaluating" (some other batch active) with no
   // in-flight match here — without this guard the panel would sit on
   // "Starting your match…" forever even though nothing is running.
+  //
+  // IMPORTANT: we do NOT gate on `!scopedDone` here. The batch rows can be
+  // marked `completed` (processed == total) while the pipeline's evaluation
+  // status is still "evaluating" and job fit_scores are still being written.
+  // If we required `!scopedDone`, the UI would drop the live progress table
+  // and jump to the "done" confirmation prematurely — exactly the "it said
+  // done with 24 posts while it was still processing" bug. The live view
+  // stays until the OVERALL evaluation status leaves evaluating.
   if (
     evaluationActive &&
-    !scopedDone &&
     !dismissed &&
     (matchInFlight || scopedRuns.length > 0)
   ) {
@@ -502,7 +531,13 @@ export default function EvaluationStep() {
   // batch data for the matched key (not a stale account-wide status), so it's
   // safe to show even on a fresh page load where the match already finished —
   // the "Back to match" button is always available to return to the dropdown.
-  if (scopedDone && !dismissed) {
+  //
+  // We also require `!evaluationActive`: while the pipeline's overall
+  // evaluation_status is still "evaluating", jobs are STILL being scored —
+  // showing "done" then is misleading (the "it said 24 done while processing"
+  // bug). The live progress view above takes precedence until the pipeline
+  // actually finalizes.
+  if (scopedDone && !evaluationActive && !dismissed) {
     return (
       <div className="space-y-4">
         {keys.length > 0 ? (
@@ -520,6 +555,13 @@ export default function EvaluationStep() {
               was matched. {completedFit} great fit
               {completedFit !== 1 ? "s" : ""} ready to review.
             </div>
+            {/* Keep the completed progress table visible so the user sees
+                the final per-keyword results instead of the panel vanishing
+                ("the table disappears" bug). */}
+            <EvaluationProgress
+              activeKey={selected}
+              runId={activeRunId}
+            />
             {renderSelector()}
           </>
         ) : (

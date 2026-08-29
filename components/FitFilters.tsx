@@ -374,7 +374,7 @@ export default function FitFilters({
                   key={job.id}
                   onClick={() => {
                     saveMatchesScrollPosition();
-                    router.push(`/jobs/${job.id}?from=/matches`);
+                    router.push(`/jobs/${job.id}/fit?from=/matches`);
                   }}
                   className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                 >

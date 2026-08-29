@@ -47,14 +47,16 @@ export const evaluateStatus: HttpHandler = async (
 
     // Fetch the user's jobs for the batch keyword (account-wide) so fit /
     // not-fit / remaining match the batch's total even when the batch spans
-    // multiple runs. A job counts toward a batch if it was touched by that
-    // batch: scored at/after the batch's created_at, or still unscored.
+    // Count ALL non-duplicate jobs (any status) so `remaining`/`fit`/`notFit`
+    // reflect every unevaluated job — including scraped-but-`queued` rows that
+    // never advanced to `completed`. Filtering on status here made the table
+    // show "0 remaining" while jobs were still unscored.
     const { data: jobs, error: jobsErr } = userId
       ? await sb
           .from("jobs")
           .select("search_key, fit, fit_score, updated_at")
           .eq("user_id", userId)
-          .in("status", ["completed", "analysed"])
+          .neq("status", "duplicate")
       : { data: null, error: null };
     if (jobsErr) {
       context.error(`evaluateStatus jobs query failed: ${jobsErr.message}`);

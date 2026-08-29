@@ -56,11 +56,15 @@ export async function evaluateRun(params: {
   // 9 (the dropdown counts account-wide), instead of just the handful in the
   // single run that happened to trigger the call. `pipelineRunId` is still used
   // below for status tracking (evaluation_runs + pipeline_runs.evaluation_status).
+  //
+  // IMPORTANT: do NOT filter on status ∈ {completed, analysed} — scraped jobs
+  // that never advanced past `queued` are still unevaluated and must be
+  // matchable (see evaluate.ts). `fit_score IS NULL` is the real signal.
   let query = sb
     .from("jobs")
     .select("*")
     .eq("user_id", userId)
-    .in("status", ["completed", "analysed"])
+    .neq("status", "duplicate")
     .is("fit_score", null)
     .limit(500);
   if (normalizedKey) {

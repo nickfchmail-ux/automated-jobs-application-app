@@ -111,12 +111,20 @@ export const evaluate: HttpHandler = async (
 
     // 4. Load the unevaluated jobs to fan out. When a search key is given,
     //    this spans ALL runs (account-wide); otherwise it's scoped to runId.
+    //
+    //    IMPORTANT: do NOT filter on status ∈ {completed, analysed}. Jobs that
+    //    were scraped but whose enrichment/processing step never advanced them
+    //    to `completed` (e.g. stuck `queued` rows) are STILL unevaluated and
+    //    must be matchable — the dropdown counts them (fit_score IS NULL), so
+    //    excluding them here made the endpoint return 404 "No saved jobs found"
+    //    and the Match button fail with "We couldn't start matching your jobs".
+    //    The real signal for "needs matching" is `fit_score IS NULL`.
     const normalizedKey = searchKey?.trim().toLowerCase().replace(/\s+/g, "_");
     let jobQuery = sb
       .from("jobs")
       .select("*")
       .eq("user_id", userId)
-      .in("status", ["completed", "analysed"])
+      .neq("status", "duplicate")
       .is("fit_score", null)
       .limit(500);
     if (normalizedKey) {
