@@ -114,13 +114,23 @@ export default function EvaluationStep() {
       : true,
   );
   const completedFit = scopedRuns.reduce((n, r) => n + (r.fit_jobs ?? 0), 0);
-  // The scoped batches are the source of truth for "is this match done?" —
-  // the global `evaluationStatus` can stay "evaluating" (another key's batch
-  // active account-wide, or a stale socket event), which would otherwise keep
-  // the panel stuck on the live view with no "Back to match" button.
+  // The scoped batches are the source of truth for "is this match done?" — the
+  // global `evaluationStatus` can stay "evaluating" (another key's batch active
+  // account-wide, or a stale socket event), which would otherwise keep the panel
+  // stuck on the live view with no "Back to match" button.
+  //
+  // A batch is DONE only when it is terminal AND has no jobs left to score
+  // (`remaining_jobs === 0`). This guard prevents the "premature done" bug
+  // (showing done while jobs are still being written) — the remaining counter
+  // is computed from the authoritative evaluator status, so 0 remaining means
+  // genuinely finished.
   const scopedDone =
     scopedRuns.length > 0 &&
-    scopedRuns.every((r) => r.status === "completed" || r.status === "failed");
+    scopedRuns.every(
+      (r) =>
+        (r.status === "completed" || r.status === "failed") &&
+        (r.remaining_jobs ?? 0) === 0,
+    );
 
   // True when the user actually started a match THIS session (vs. the socket
   // merely reporting an account-wide "evaluating" status for some other key).
@@ -467,15 +477,15 @@ export default function EvaluationStep() {
   // in-flight match here — without this guard the panel would sit on
   // "Starting your match…" forever even though nothing is running.
   //
-  // IMPORTANT: we do NOT gate on `!scopedDone` here. The batch rows can be
-  // marked `completed` (processed == total) while the pipeline's evaluation
-  // status is still "evaluating" and job fit_scores are still being written.
-  // If we required `!scopedDone`, the UI would drop the live progress table
-  // and jump to the "done" confirmation prematurely — exactly the "it said
-  // done with 24 posts while it was still processing" bug. The live view
-  // stays until the OVERALL evaluation status leaves evaluating.
+  // IMPORTANT: the live view is gated on `!scopedDone` — and `scopedDone` now
+  // ALSO requires every batch to have 0 remaining jobs (see its definition),
+  // so it can only be true when the evaluator genuinely finished. This lets
+  // the done view take over even if `evaluationStatus` is stuck at "evaluating"
+  // (a missed socket event or a wedged poller), which previously left the panel
+  // frozen on "Matching… / 28 of 31" forever.
   if (
     evaluationActive &&
+    !scopedDone &&
     !dismissed &&
     (matchInFlight || scopedRuns.length > 0)
   ) {
@@ -541,12 +551,13 @@ export default function EvaluationStep() {
   // safe to show even on a fresh page load where the match already finished —
   // the "Back to match" button is always available to return to the dropdown.
   //
-  // We also require `!evaluationActive`: while the pipeline's overall
-  // evaluation_status is still "evaluating", jobs are STILL being scored —
-  // showing "done" then is misleading (the "it said 24 done while processing"
-  // bug). The live progress view above takes precedence until the pipeline
-  // actually finalizes.
-  if (scopedDone && !evaluationActive && !dismissed) {
+  // `scopedDone` now also requires every scoped batch to have 0 remaining jobs
+  // (see its definition), so it is ONLY true when the evaluator genuinely
+  // finished — even if `evaluationStatus` is stuck at "evaluating" (missed
+  // socket event / wedged poller). That's exactly the "Matching… forever"
+  // bug we're fixing: the done view takes over the moment the authoritative
+  // batch data says there's nothing left to score.
+  if (scopedDone && !dismissed) {
     return (
       <div className="space-y-4">
         {keys.length > 0 ? (
@@ -567,10 +578,7 @@ export default function EvaluationStep() {
             {/* Keep the completed progress table visible so the user sees
                 the final per-keyword results instead of the panel vanishing
                 ("the table disappears" bug). */}
-            <EvaluationProgress
-              activeKey={selected}
-              runId={activeRunId}
-            />
+            <EvaluationProgress activeKey={selected} runId={activeRunId} />
             {renderSelector()}
           </>
         ) : (
