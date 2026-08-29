@@ -768,63 +768,63 @@ export default function LiveRunCard({
                       real totals instead of misleading zeros. Only when truly
                       nothing has streamed yet — so it never flickers in and
                       out as boards report one-by-one. */}
-                  {!hasBoardData &&
-                    boards.every((b) => {
-                      const m = boardCounts.get(b);
-                      return !m || ((m?.newSaved ?? 0) === 0 && !m?.stage);
-                    }) && (
-                      <tr className="bg-white dark:bg-zinc-900">
-                        <td className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">
-                          All boards
-                        </td>
-                        <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                          {displayNewJobs}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          {displayFound}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          {duplicateCount > 0 ? duplicateCount : "–"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          {processingCount > 0 ? processingCount : "–"}
-                        </td>
-                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                          –
-                        </td>
-                        <td className="px-3 py-2 text-left">
-                          <span className="text-zinc-400 dark:text-zinc-500">
-                            {displayNewJobs > 0
-                              ? `${displayNewJobs} new · ${duplicateCount} duplicate`
-                              : phase === "completed"
-                                ? "No new jobs"
-                                : "Working…"}
-                          </span>
-                        </td>
-                      </tr>
-                    )}
+                  {boards.length === 0 && (
+                    <tr className="bg-white dark:bg-zinc-900">
+                      <td className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">
+                        All boards
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                        {displayNewJobs}
+                      </td>
+                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                        {displayFound}
+                      </td>
+                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                        {duplicateCount > 0 ? duplicateCount : "–"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                        {processingCount > 0 ? processingCount : "–"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                        –
+                      </td>
+                      <td className="px-3 py-2 text-left">
+                        <span className="text-zinc-400 dark:text-zinc-500">
+                          {displayNewJobs > 0
+                            ? `${displayNewJobs} new · ${duplicateCount} duplicate`
+                            : phase === "completed"
+                              ? "No new jobs"
+                              : "Working…"}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
 
-                  {/* Per-board rows only when there's real per-board data —
-                      otherwise the "All boards" fallback above is the only
-                      row, so they never both show together. */}
-                  {hasBoardData &&
-                    boards.map((board) => {
-                      const meta = BOARD_META[board] ?? {
-                        label: board,
-                        color: "bg-zinc-500",
-                      };
+                  {/* Per-board rows — render for EVERY requested board as soon
+                      as the run knows its boards, even with 0 counts and a
+                      "pending" stage. Previously these were gated on
+                      `hasBoardData` (any found/newSaved > 0), so at the start
+                      of a search — when every board is pre-seeded with
+                      found:0/newSaved:0/stage:"pending" — NO rows appeared at
+                      all until a board reported real numbers ("no rows in the
+                      table until the end"). */}
+                  {boards.map((board) => {
+                    const meta = BOARD_META[board] ?? {
+                      label: board,
+                      color: "bg-zinc-500",
+                    };
 
-                      // Single merged source shared with the board chips.
-                      const merged = boardCounts.get(board);
-                      const newSaved = merged?.newSaved ?? 0;
-                      const foundCount = merged?.found ?? 0;
-                      const duplicate = merged?.duplicate ?? 0;
-                      const processing = merged?.processing ?? 0;
-                      const done = merged?.done ?? 0;
-                      const stage = merged?.stage;
-                      const label = merged?.displayName || meta.label;
-                      const finished =
-                        phase === "completed" || phase === "failed";
+                    // Single merged source shared with the board chips.
+                    const merged = boardCounts.get(board);
+                    const newSaved = merged?.newSaved ?? 0;
+                    const foundCount = merged?.found ?? 0;
+                    const duplicate = merged?.duplicate ?? 0;
+                    const processing = merged?.processing ?? 0;
+                    const done = merged?.done ?? 0;
+                    const stage = merged?.stage;
+                    const label = merged?.displayName || meta.label;
+                    const finished =
+                      phase === "completed" || phase === "failed";
 
                       // stage → status copy + tone
                       const stageCopy = (() => {
