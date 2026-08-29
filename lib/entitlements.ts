@@ -477,6 +477,42 @@ export function isUnlimited(profile: Profile): boolean {
 /** Query the user's usage rows within the current usage period. */
 async function getUsageRecords(userId: string, periodStart: string) {
   const supabase = requireServiceClient();
+  // Aggregated server-side: return ONE row per usage_type instead of every
+  // usage_records row (which could be dozens+) just to count 4 types in JS.
+  // This runs on every consumeEntitlement (search/eval/fine-tune) — the old
+  // full fetch burned rows + RUs on a busy account. Falls back to the direct
+  // query if the RPC isn't present yet.
+  try {
+    const { data, error } = await supabase.rpc("usage_counts_by_type", {
+      p_user_id: userId,
+      p_since: periodStart,
+    });
+    if (!error && data) {
+      const counts = new Map<string, number>();
+      for (const row of data as { usage_type: string; n: number }[]) {
+        counts.set(row.usage_type, Number(row.n) || 0);
+      }
+      // Reconstruct a minimal record list from the aggregated counts so the
+      // existing `.filter().length` logic keeps working unchanged.
+      const records: {
+        usage_type: UsageType;
+        search_key: string | null;
+        created_at: string;
+      }[] = [];
+      for (const [type, n] of counts) {
+        for (let i = 0; i < n; i++) {
+          records.push({
+            usage_type: type as UsageType,
+            search_key: null,
+            created_at: periodStart,
+          });
+        }
+      }
+      return records;
+    }
+  } catch (e) {
+    console.error("[entitlements] usage RPC error:", e);
+  }
   const { data, error } = await supabase
     .from("usage_records")
     .select("usage_type, search_key, created_at")
