@@ -55,10 +55,18 @@ export async function fetchWithAuth(
   });
 
   if (!refreshRes.ok) {
-    // Refresh token is invalid or expired — force re-login
-    cookieStore.delete("token");
-    cookieStore.delete("refresh_token");
-    return res; // return the original 401
+    // Only a DEFINITIVE 401 (genuinely invalid/expired refresh token) means
+    // the session is dead — clear cookies and force re-login. A 503 / 5xx /
+    // network blip means the refresh failed TRANSIENTLY (Supabase degraded);
+    // the token may still be valid, so keep the session and return the
+    // original 401. Clearing cookies here on any non-ok was the auto-logout
+    // bug: a Supabase incident made every refresh return 401→503 and the
+    // client wiped the session.
+    if (refreshRes.status === 401) {
+      cookieStore.delete("token");
+      cookieStore.delete("refresh_token");
+    }
+    return res; // return the original 401/response
   }
 
   const { access_token, refresh_token } = await refreshRes.json();

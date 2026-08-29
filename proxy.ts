@@ -48,11 +48,23 @@ async function tokenStatus(token: string): Promise<TokenStatus> {
   }
 }
 
-/** Exchange the refresh token for a fresh access token via the backend. */
+/** Exchange the refresh token for a fresh access token via the backend.
+ *
+ * Returns:
+ *   - `{ ok: true, access_token, refresh_token? }` on success
+ *   - `{ ok: false, transient: true }`  when the backend is unreachable /
+ *     returned 503/5xx (Supabase degraded, network blip) — the token may
+ *     still be valid, so the caller must NOT log the user out.
+ *   - `{ ok: false, transient: false }` when the refresh token is genuinely
+ *     invalid/expired (backend 401) — the session is dead, force re-login.
+ */
 async function refreshTokens(
   refreshToken: string,
-): Promise<{ access_token: string; refresh_token?: string } | null> {
-  if (!BACKEND_URL) return null;
+): Promise<
+  | { ok: true; access_token: string; refresh_token?: string }
+  | { ok: false; transient: boolean }
+> {
+  if (!BACKEND_URL) return { ok: false, transient: true };
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -63,19 +75,25 @@ async function refreshTokens(
         body: JSON.stringify({ refresh_token: refreshToken }),
         signal: controller.signal,
       });
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (!data?.access_token) return null;
-      return {
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-      };
+      if (res.ok) {
+        const data = await res.json();
+        if (!data?.access_token) return { ok: false, transient: true };
+        return {
+          ok: true,
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        };
+      }
+      // A definitive 401 = genuinely invalid/expired token → force re-login.
+      // Any other status (503/5xx) = transient → keep the session.
+      return { ok: false, transient: res.status !== 401 };
     } finally {
       clearTimeout(timeout);
     }
   } catch (e) {
-    console.error("[proxy] token refresh failed:", e);
-    return null;
+    // Network / abort → transient; the token may still be valid.
+    console.error("[proxy] token refresh failed (transient):", e);
+    return { ok: false, transient: true };
   }
 }
 
@@ -113,7 +131,7 @@ export async function proxy(request: NextRequest) {
   //    signed in past the ~1h Supabase access-token lifetime.
   if (refreshToken) {
     const fresh = await refreshTokens(refreshToken);
-    if (fresh?.access_token) {
+    if (fresh.ok) {
       const response = NextResponse.next();
       response.cookies.set("token", fresh.access_token, COOKIE_OPTS);
       if (fresh.refresh_token) {
@@ -121,6 +139,13 @@ export async function proxy(request: NextRequest) {
       }
       return response;
     }
+    // Refresh failed TRANSIENTLY (backend unreachable / 503) — the token may
+    // still be valid. Do NOT log the user out; let the request through and
+    // let server code / fetchWithAuth handle a genuinely bad token.
+    if (fresh.transient) {
+      return NextResponse.next();
+    }
+    // Otherwise fall through: genuinely invalid token → /login below.
   }
 
   // 5) Genuinely expired/invalid and refresh failed (or no refresh token) →
