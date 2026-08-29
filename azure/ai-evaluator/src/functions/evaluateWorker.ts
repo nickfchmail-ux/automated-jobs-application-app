@@ -42,11 +42,17 @@ export const evaluateWorker: StorageQueueHandler<EvaluateJobMessage> = async (
 
   let processed = 0;
   let failed = 0;
+  let fit = 0;
+  let notFit = 0;
   let lastError: string | null = null;
 
   try {
-    await evaluateSingleJob(msg, (m) => context.log(`[job] ${m}`));
+    const result = await evaluateSingleJob(msg, (m) =>
+      context.log(`[job] ${m}`),
+    );
     processed = 1;
+    if (result.fit) fit = 1;
+    else notFit = 1;
   } catch (e) {
     failed = 1;
     lastError = e instanceof Error ? e.message : "Job evaluation failed";
@@ -60,10 +66,12 @@ export const evaluateWorker: StorageQueueHandler<EvaluateJobMessage> = async (
       evaluationRunId,
       processed,
       failed,
+      fit,
+      notFit,
       lastError,
     });
     context.log(
-      `batch ${evaluationRunId}: processed=${res.processed}/${res.total} failed=${res.failed} done=${res.done}`,
+      `batch ${evaluationRunId}: processed=${res.processed}/${res.total} failed=${res.failed} fit=${res.fit} notFit=${res.notFit} done=${res.done}`,
     );
     await notifyStateChange(userId, runId);
 

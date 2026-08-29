@@ -43,9 +43,15 @@ export async function updateEvaluationRunStatus(
 }
 
 /**
- * ATOMICALLY increment an evaluation batch's processed/failed counts and
- * report whether the batch is now complete. Used by the per-job fan-out
- * workers — a naive read-modify-write here would race and lose updates.
+ * ATOMICALLY increment an evaluation batch's processed/failed/fit/not-fit
+ * counts and report whether the batch is now complete. Used by the per-job
+ * fan-out workers — a naive read-modify-write here would race and lose
+ * updates.
+ *
+ * The worker passes the OUTCOME of the job it just scored (fit / not-fit),
+ * so the batch's fit_jobs / not_fit_jobs counters are the authoritative
+ * per-batch result. The frontend reads these directly — NO jobs-table scan
+ * (which hit the 1,000-row REST limit and miscounted across re-matches).
  *
  * Returns `done = true` when every job in the batch has reached a terminal
  * outcome (processed + failed >= total), so the LAST worker can finalize.
@@ -54,35 +60,45 @@ export async function incrementEvaluationRun(params: {
   evaluationRunId: string;
   processed: number;
   failed: number;
+  fit?: number;
+  notFit?: number;
   lastError?: string | null;
 }): Promise<{
   total: number;
   processed: number;
   failed: number;
+  fit: number;
+  notFit: number;
   done: boolean;
 }> {
   const sb = getSupabase();
 
-  // Preferred: atomic RPC (migration 004_fanout_increment_rpc.sql) so
-  // concurrent workers never lose an update.
+  // Preferred: atomic RPC (migration 004 + 005) so concurrent workers never
+  // lose an update.
   try {
     const { data, error } = await sb.rpc("increment_evaluation_run", {
       p_run_id: params.evaluationRunId,
       p_processed: params.processed,
       p_failed: params.failed,
       p_last_error: params.lastError ?? null,
+      p_fit: params.fit ?? 0,
+      p_not_fit: params.notFit ?? 0,
     });
     if (!error) {
       const r = (data ?? {}) as {
         total?: number;
         processed?: number;
         failed?: number;
+        fit?: number;
+        notFit?: number;
         done?: boolean;
       };
       return {
         total: Number(r.total ?? 0),
         processed: Number(r.processed ?? 0),
         failed: Number(r.failed ?? 0),
+        fit: Number(r.fit ?? 0),
+        notFit: Number(r.notFit ?? 0),
         done: Boolean(r.done),
       };
     }
@@ -97,10 +113,10 @@ export async function incrementEvaluationRun(params: {
   }
 
   // Fallback: read-modify-write (non-atomic — acceptable at low concurrency;
-  // install migration 004 for full atomicity at high concurrency).
+  // install migration 004/005 for full atomicity at high concurrency).
   const { data: row, error: readErr } = await sb
     .from("evaluation_runs")
-    .select("total_jobs, processed_jobs, failed_jobs")
+    .select("total_jobs, processed_jobs, failed_jobs, fit_jobs, not_fit_jobs")
     .eq("id", params.evaluationRunId)
     .maybeSingle();
   if (readErr) {
@@ -109,12 +125,16 @@ export async function incrementEvaluationRun(params: {
   const total = Number(row?.total_jobs ?? 0);
   const processed = Number(row?.processed_jobs ?? 0) + params.processed;
   const failed = Number(row?.failed_jobs ?? 0) + params.failed;
+  const fit = Number(row?.fit_jobs ?? 0) + (params.fit ?? 0);
+  const notFit = Number(row?.not_fit_jobs ?? 0) + (params.notFit ?? 0);
 
   const { error: updErr } = await sb
     .from("evaluation_runs")
     .update({
       processed_jobs: processed,
       failed_jobs: failed,
+      fit_jobs: fit,
+      not_fit_jobs: notFit,
       last_error: params.lastError ?? null,
       status: "evaluating",
       updated_at: new Date().toISOString(),
@@ -124,7 +144,14 @@ export async function incrementEvaluationRun(params: {
     throw new Error(`Failed to update evaluation run: ${updErr.message}`);
   }
 
-  return { total, processed, failed, done: processed + failed >= total };
+  return {
+    total,
+    processed,
+    failed,
+    fit,
+    notFit,
+    done: processed + failed >= total,
+  };
 }
 
 /**
