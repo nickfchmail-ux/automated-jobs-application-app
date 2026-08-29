@@ -145,7 +145,7 @@ export default function EvaluationProgress({
     (n, r) => n + (r.not_fit_jobs ?? 0),
     0,
   );
-  const remainingJobs = evaluationRuns.reduce(
+  const batchRemainingJobs = evaluationRuns.reduce(
     (n, r) =>
       n +
       (r.remaining_jobs ??
@@ -164,9 +164,26 @@ export default function EvaluationProgress({
   // Only fall back to the run-scoped jobStream when the status counts are all
   // zero (no socket/status data has landed yet).
   const hasStatusCounts =
-    statusFitJobs > 0 || statusNotFitJobs > 0 || remainingJobs > 0;
+    statusFitJobs > 0 || statusNotFitJobs > 0 || batchRemainingJobs > 0;
   const fitJobs = hasStatusCounts ? statusFitJobs : fitJobsFromStream;
   const notFitJobs = hasStatusCounts ? statusNotFitJobs : notFitJobsFromStream;
+
+  // Reconcile the summary strip: fit + notFit + remaining must equal total.
+  // While a batch is ACTIVE, fit/notFit (from the job scan) can briefly lead
+  // the batch counter (job rows are written before the worker bumps
+  // processed), so using total - processed - failed would show
+  // "35 + 19 = 54 ≠ 42". Deriving remaining from the ledger (total - fit -
+  // notFit) keeps the strip internally consistent during the run. Once every
+  // batch is TERMINAL, remaining is 0 (processed + failed = total) so failed
+  // jobs don't linger as "remaining" under a "Scored ✓" state.
+  const batchesTerminal =
+    evaluationRuns.length > 0 &&
+    evaluationRuns.every(
+      (r) => r.status === "completed" || r.status === "failed",
+    );
+  const remainingJobs = batchesTerminal
+    ? 0
+    : Math.max(0, totalJobs - fitJobs - notFitJobs);
 
   const rows = [...active, ...done];
 
@@ -245,14 +262,15 @@ export default function EvaluationProgress({
                 const copy = evaluationBatchCopy(run.status);
                 const fit = run.fit_jobs ?? 0;
                 const notFit = run.not_fit_jobs ?? 0;
-                const remaining =
-                  run.remaining_jobs ??
-                  Math.max(
-                    0,
-                    (run.total_jobs ?? 0) -
-                      (run.processed_jobs ?? 0) -
-                      (run.failed_jobs ?? 0),
-                  );
+                const rowTotal = run.total_jobs ?? 0;
+                const rowTerminal =
+                  run.status === "completed" || run.status === "failed";
+                // Ledger-consistent: fit + notFit + remaining = rowTotal while
+                // active; 0 when terminal (failed jobs resolve out of
+                // "remaining" once the batch is done).
+                const remaining = rowTerminal
+                  ? 0
+                  : Math.max(0, rowTotal - fit - notFit);
                 return (
                   <motion.tr
                     key={run.id}
