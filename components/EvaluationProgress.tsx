@@ -168,19 +168,30 @@ export default function EvaluationProgress({
   const fitJobs = hasStatusCounts ? statusFitJobs : fitJobsFromStream;
   const notFitJobs = hasStatusCounts ? statusNotFitJobs : notFitJobsFromStream;
 
-  // Reconcile the summary strip: fit + notFit + remaining must equal total.
-  // While a batch is ACTIVE, fit/notFit (from the job scan) can briefly lead
-  // the batch counter (job rows are written before the worker bumps
-  // processed), so using total - processed - failed would show
-  // "35 + 19 = 54 ≠ 42". Deriving remaining from the ledger (total - fit -
-  // notFit) keeps the strip internally consistent during the run. Once every
-  // batch is TERMINAL, remaining is 0 (processed + failed = total) so failed
-  // jobs don't linger as "remaining" under a "Scored ✓" state.
+  // ── Monotonic fit/not-fit display ────────────────────────────────
+  // The socket `stats` evaluation state is ACCOUNT-WIDE and cached ~20s on
+  // the backend, while the 3s poller hits the evaluator's live counters.
+  // These can briefly disagree — fit/not-fit can appear to "jump down" then
+  // back up (e.g. 0/5 → 15/15). Fit counts are cumulative (a scored job is
+  // scored forever), so while a match is active we show the MAX seen so far
+  // (ratcheted up by the effect at the top) and never let the numbers go
+  // backwards. Once every batch is terminal, show the authoritative values.
   const batchesTerminal =
     evaluationRuns.length > 0 &&
     evaluationRuns.every(
       (r) => r.status === "completed" || r.status === "failed",
     );
+  // Reconcile the summary strip: fit + notFit + remaining must equal total.
+  // While a batch is ACTIVE, fit/notFit can briefly lead the batch counter
+  // (job rows are written before the worker bumps processed), so using
+  // total - processed - failed would show "35 + 19 = 54 ≠ 42". Deriving
+  // remaining from the ledger (total - fit - notFit) keeps the strip
+  // internally consistent during the run. Once every batch is TERMINAL,
+  // remaining is 0 (processed + failed = total) so failed jobs don't linger
+  // as "remaining" under a "Scored ✓" state. The fit/not-fit themselves are
+  // already monotonic — the runSlice reducer ratchets them so the socket's
+  // 20s-cached account-wide state and the poller's live counters can't make
+  // them jump down.
   const remainingJobs = batchesTerminal
     ? 0
     : Math.max(0, totalJobs - fitJobs - notFitJobs);
@@ -229,7 +240,9 @@ export default function EvaluationProgress({
           <strong className="font-semibold tabular-nums">{fitJobs}</strong> fit
         </span>
         <span className="text-rose-600 dark:text-rose-400">
-          <strong className="font-semibold tabular-nums">{notFitJobs}</strong>{" "}
+          <strong className="font-semibold tabular-nums">
+            {notFitJobs}
+          </strong>{" "}
           not a fit
         </span>
         <span className="text-zinc-500 dark:text-zinc-400">

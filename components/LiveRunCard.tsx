@@ -5,7 +5,7 @@ import { runReset } from "@/state/global/slice/runSlice";
 import type { RootState } from "@/state/global/store";
 import type { PipelineRunStatus } from "@/types/api";
 import { motion } from "motion/react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import RunStatusBadge from "./RunStatusBadge";
 
@@ -194,6 +194,35 @@ export default function LiveRunCard({
     }
     return { newSaved, found };
   }, [boardCounts]);
+
+  // ── Monotonic per-board counters ──────────────────────────────────
+  // The backend's live board numbers can briefly FLICKER: Redis live
+  // counters and the Supabase `run_boards` fallback update at different
+  // times (run_boards detail is cached ~10s), so a `stats` push can report a
+  // lower value than the previous one ("19 → 0 → 0 → 25"). The final number
+  // is correct, but the journey looks broken. Track the MAX seen per board
+  // per run and never let the displayed New/Found count go backwards while a
+  // run is live — the counts are cumulative (scraped/unique only ever grow),
+  // so taking the max is always truthful.
+  const monotonicRef = useRef<
+    Record<string, { newSaved: number; found: number; dup: number }>
+  >({});
+  const finished =
+    phase === "completed" || phase === "failed";
+  if (!finished) {
+    for (const [board, b] of boardCounts) {
+      const prev = monotonicRef.current[board] ?? {
+        newSaved: 0,
+        found: 0,
+        dup: 0,
+      };
+      monotonicRef.current[board] = {
+        newSaved: Math.max(prev.newSaved, b.newSaved),
+        found: Math.max(prev.found, b.found),
+        dup: Math.max(prev.dup, b.duplicate),
+      };
+    }
+  }
 
   // Headline numbers — prefer the summed per-board data (matches the table)
   // and fall back to the aggregate funnel when per-board isn't available.
@@ -826,127 +855,142 @@ export default function LiveRunCard({
                     const finished =
                       phase === "completed" || phase === "failed";
 
-                      // stage → status copy + tone
-                      const stageCopy = (() => {
-                        const err = merged?.lastError ?? "";
-                        switch (stage) {
-                          case "done":
-                            return {
-                              text: "Done ✓",
-                              tone: "text-emerald-600 dark:text-emerald-400",
-                            };
-                          case "blocked":
-                            return {
-                              text: `Blocked — anti-bot${err ? `: ${err.slice(0, 40)}` : ""}`,
-                              tone: "text-amber-600 dark:text-amber-400",
-                            };
-                          case "failed":
-                            return {
-                              text: `Failed${err ? `: ${err.slice(0, 40)}` : ""}`,
-                              tone: "text-red-600 dark:text-red-400",
-                            };
-                          case "fetching":
-                            return {
-                              text: "Fetching jobs…",
-                              tone: "text-blue-600 dark:text-blue-400",
-                            };
-                          case "extracting":
-                            return {
-                              text: "Reading details…",
-                              tone: "text-violet-600 dark:text-violet-400",
-                            };
-                          case "pending":
-                            return {
-                              text: "Not started",
-                              tone: "text-zinc-400 dark:text-zinc-500",
-                            };
-                          default:
-                            return {
-                              text:
-                                newSaved > 0
-                                  ? "Saving…"
-                                  : finished
-                                    ? "None found"
-                                    : "Waiting…",
-                              tone: "text-zinc-400 dark:text-zinc-500",
-                            };
-                        }
-                      })();
+                    // Monotonic (never-decreasing) display values — the
+                    // backend's live Redis counter and the Supabase run_boards
+                    // fallback can briefly disagree ("19 → 0 → 25"), so while
+                    // a run is live we show the max seen so far. Once the run
+                    // is finished, fall back to the authoritative merged
+                    // values so the final snapshot is exact.
+                    const mono = finished
+                      ? undefined
+                      : monotonicRef.current[board];
+                    const displayNew =
+                      mono?.newSaved ?? newSaved;
+                    const displayFound =
+                      mono?.found ?? foundCount;
+                    const displayDup = mono?.dup ?? duplicate;
 
-                      const working =
-                        stage === "fetching" || stage === "extracting";
+                    // stage → status copy + tone
+                    const stageCopy = (() => {
+                      const err = merged?.lastError ?? "";
+                      switch (stage) {
+                        case "done":
+                          return {
+                            text: "Done ✓",
+                            tone: "text-emerald-600 dark:text-emerald-400",
+                          };
+                        case "blocked":
+                          return {
+                            text: `Blocked — anti-bot${err ? `: ${err.slice(0, 40)}` : ""}`,
+                            tone: "text-amber-600 dark:text-amber-400",
+                          };
+                        case "failed":
+                          return {
+                            text: `Failed${err ? `: ${err.slice(0, 40)}` : ""}`,
+                            tone: "text-red-600 dark:text-red-400",
+                          };
+                        case "fetching":
+                          return {
+                            text: "Fetching jobs…",
+                            tone: "text-blue-600 dark:text-blue-400",
+                          };
+                        case "extracting":
+                          return {
+                            text: "Reading details…",
+                            tone: "text-violet-600 dark:text-violet-400",
+                          };
+                        case "pending":
+                          return {
+                            text: "Not started",
+                            tone: "text-zinc-400 dark:text-zinc-500",
+                          };
+                        default:
+                          return {
+                            text:
+                              newSaved > 0
+                                ? "Saving…"
+                                : finished
+                                  ? "None found"
+                                  : "Waiting…",
+                            tone: "text-zinc-400 dark:text-zinc-500",
+                          };
+                      }
+                    })();
 
-                      return (
-                        <tr
-                          key={board}
-                          className="bg-white dark:bg-zinc-900"
-                          title={merged?.lastError ?? undefined}
-                        >
-                          <td className="px-3 py-2">
-                            <span className="inline-flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-400">
+                    const working =
+                      stage === "fetching" || stage === "extracting";
+
+                    return (
+                      <tr
+                        key={board}
+                        className="bg-white dark:bg-zinc-900"
+                        title={merged?.lastError ?? undefined}
+                      >
+                        <td className="px-3 py-2">
+                          <span className="inline-flex items-center gap-1.5 font-medium text-zinc-600 dark:text-zinc-400">
+                            <span
+                              className={`relative flex w-2 h-2`}
+                              aria-hidden="true"
+                            >
+                              {(working || processing > 0) && (
+                                <span
+                                  className={`absolute inline-flex h-full w-full rounded-full ${meta.color} opacity-75 motion-safe:animate-ping`}
+                                />
+                              )}
                               <span
-                                className={`relative flex w-2 h-2`}
+                                className={`relative inline-flex rounded-full w-2 h-2 ${meta.color} ${
+                                  finished ? "opacity-60" : ""
+                                }`}
+                              />
+                            </span>
+                            {label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                          {displayNew}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          {displayFound}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-400 dark:text-zinc-500 tabular-nums">
+                          {displayDup > 0 ? displayDup : "0"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          {processing > 0 ? processing : "–"}
+                        </td>
+                        <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
+                          {done > 0 ? done : "–"}
+                        </td>
+                        <td className="px-3 py-2 text-left">
+                          <span className={stageCopy.tone}>
+                            {working && (
+                              <svg
+                                className="inline w-3 h-3 mr-1 animate-spin motion-reduce:hidden"
+                                fill="none"
+                                viewBox="0 0 24 24"
                                 aria-hidden="true"
                               >
-                                {(working || processing > 0) && (
-                                  <span
-                                    className={`absolute inline-flex h-full w-full rounded-full ${meta.color} opacity-75 motion-safe:animate-ping`}
-                                  />
-                                )}
-                                <span
-                                  className={`relative inline-flex rounded-full w-2 h-2 ${meta.color} ${
-                                    finished ? "opacity-60" : ""
-                                  }`}
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
                                 />
-                              </span>
-                              {label}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                            {newSaved}
-                          </td>
-                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                            {foundCount}
-                          </td>
-                          <td className="px-3 py-2 text-right text-zinc-400 dark:text-zinc-500 tabular-nums">
-                            {duplicate > 0 ? duplicate : "0"}
-                          </td>
-                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                            {processing > 0 ? processing : "–"}
-                          </td>
-                          <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400 tabular-nums">
-                            {done > 0 ? done : "–"}
-                          </td>
-                          <td className="px-3 py-2 text-left">
-                            <span className={stageCopy.tone}>
-                              {working && (
-                                <svg
-                                  className="inline w-3 h-3 mr-1 animate-spin motion-reduce:hidden"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  aria-hidden="true"
-                                >
-                                  <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"
-                                  />
-                                  <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                  />
-                                </svg>
-                              )}
-                              {stageCopy.text}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                />
+                              </svg>
+                            )}
+                            {stageCopy.text}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -180,7 +180,34 @@ const runSlice = createSlice({
     },
     /** Per-keyword batch progress (evaluation_runs rows). */
     evaluationRunsUpdated(state, action: PayloadAction<EvaluationRunRow[]>) {
-      state.evaluationRuns = action.payload;
+      // Ratchet fit/not-fit per batch so the counters NEVER go backwards.
+      // The socket `stats` evaluation state is ACCOUNT-WIDE and cached ~20s
+      // on the backend, while the 3s poller hits the evaluator's live
+      // counters. These alternate, so a stale socket push can briefly report
+      // LOWER fit/not-fit than the last poll ("0/5 → 15/15" jumps). Fit counts
+      // are cumulative (a scored job is scored forever), so taking the max of
+      // the incoming vs the existing per-batch counter is always truthful and
+      // keeps the numbers climbing smoothly to the correct final value.
+      const incoming = action.payload;
+      const prevById = new Map(state.evaluationRuns.map((r) => [r.id, r]));
+      state.evaluationRuns = incoming.map((r) => {
+        const prev = prevById.get(r.id);
+        if (!prev) return r;
+        return {
+          ...r,
+          fit_jobs: Math.max(r.fit_jobs ?? 0, prev.fit_jobs ?? 0),
+          not_fit_jobs: Math.max(
+            r.not_fit_jobs ?? 0,
+            prev.not_fit_jobs ?? 0,
+          ),
+          // `processed` is monotonic per batch too — a re-poll can't unprocess
+          // a job. Keep the max so "X of Y scored" never drops.
+          processed_jobs: Math.max(
+            r.processed_jobs ?? 0,
+            prev.processed_jobs ?? 0,
+          ),
+        };
+      });
     },
     /** Upsert a single evaluation_runs row as it changes via Realtime. */
     evaluationRunUpserted(state, action: PayloadAction<EvaluationRunRow>) {
@@ -190,6 +217,19 @@ const runSlice = createSlice({
         state.evaluationRuns[idx] = {
           ...state.evaluationRuns[idx],
           ...incoming,
+          // Never let fit/not-fit or processed go backwards on an upsert.
+          fit_jobs: Math.max(
+            incoming.fit_jobs ?? 0,
+            state.evaluationRuns[idx].fit_jobs ?? 0,
+          ),
+          not_fit_jobs: Math.max(
+            incoming.not_fit_jobs ?? 0,
+            state.evaluationRuns[idx].not_fit_jobs ?? 0,
+          ),
+          processed_jobs: Math.max(
+            incoming.processed_jobs ?? 0,
+            state.evaluationRuns[idx].processed_jobs ?? 0,
+          ),
         };
       } else {
         state.evaluationRuns = [...state.evaluationRuns, incoming];
